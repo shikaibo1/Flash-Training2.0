@@ -10,20 +10,23 @@ const PracticeSession = lazy(() => import("./pages/PracticeSession"));
 const Profile = lazy(() => import("./pages/Profile"));
 const PracticeHistory = lazy(() => import("./pages/PracticeHistory"));
 const LearningCurve = lazy(() => import("./pages/LearningCurve"));
+const Bridge = lazy(() => import("./pages/Bridge"));
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col items-center bg-background">
-        <div className="w-full max-w-[1440px] flex flex-col min-h-screen shadow-2xl bg-background border-x border-border/50">
+      <div className="workspace-shell">
+        <a href="#main-content" className="skip-link">跳到主要内容</a>
+        <div className="workspace-body">
           <Header />
-          <main className="flex-1 w-full p-6 md:p-8 overflow-y-auto">
+          <main id="main-content" className="workspace-main">
             <Suspense fallback={<div role="status" className="py-12 text-center text-muted-foreground">正在加载页面...</div>}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/graph" element={<KnowledgeGraph />} />
+              <Route path="/bridge" element={<Bridge />} />
               <Route path="/skills" element={<SkillsLibrary />} />
               <Route path="/practice/:id" element={<PracticeSession />} />
               <Route path="/practice" element={<PracticeSession />} />

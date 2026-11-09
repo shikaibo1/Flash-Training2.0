@@ -28,8 +28,7 @@ class SkillRepository:
         return [self._atom(row) for row in self._conn.execute("SELECT * FROM atomic_skills ORDER BY rowid")]
 
     def add_atom(self, atom: AtomicSkill) -> AtomicSkill:
-        definition = atom.model_dump(include={"action", "input_spec", "output_spec", "boundary", "rubric",
-                                             "knowledge_ids", "prerequisite_ids", "contexts", "version"})
+        definition = atom.model_dump(exclude={"atomic_skill_id", "name", "description", "categories"})
         self._conn.execute("""INSERT INTO atomic_skills
             (atomic_skill_id,name,description,categories_json,definition_json) VALUES (?,?,?,?,?)""", (
             atom.atomic_skill_id, atom.name, atom.description, dump(atom.categories), dump(definition)))

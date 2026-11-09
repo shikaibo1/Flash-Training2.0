@@ -4,7 +4,14 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+BRIDGE_SCHEMA = """
+CREATE TABLE bridge_diagnoses (
+    session_id TEXT PRIMARY KEY REFERENCES practice_sessions(session_id),
+    user_id TEXT NOT NULL REFERENCES users(user_id),
+    payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+)
+"""
 SCHEMA = """
 CREATE TABLE users (user_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
 CREATE TABLE atomic_skills (
@@ -96,14 +103,16 @@ class Database:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise RuntimeError("Database schema is newer than this application")
-            if version not in (0, SCHEMA_VERSION):
-                raise RuntimeError("This application requires a fresh schema v2 database; select a new database path. Existing data was not modified.")
+            if version not in (0, 2, SCHEMA_VERSION):
+                raise RuntimeError("This application supports schema v2 or v3; schema v1 requires a new database path. Existing data was not modified.")
             if version == 0:
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").fetchone():
-                    raise RuntimeError("The selected database is not an empty schema v2 database; select a new database path.")
+                    raise RuntimeError("The selected database is not empty; select a new database path.")
                 for statement in SCHEMA.split(";"):
                     if statement.strip():
                         conn.execute(statement)
+            if version in (0, 2):
+                conn.execute(BRIDGE_SCHEMA)
                 conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
         except BaseException:

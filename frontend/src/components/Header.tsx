@@ -1,65 +1,46 @@
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Zap, Home, BookOpen, User, Brain, BarChart } from 'lucide-react';
+import { ArrowUpRight, BookOpen, ChartNoAxesCombined, Compass, History, Network, Route, User, Zap } from 'lucide-react';
 
-const Header = () => {
-  const location = useLocation();
-  
-  const isActive = (path: string) => {
-    return location.pathname === path ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary';
-  };
+const navigation = [
+  { path: '/', label: '学习工作台', icon: Compass },
+  { path: '/bridge', label: '迁移训练', icon: Route },
+  { path: '/skills', label: '职业任务库', icon: BookOpen },
+  { path: '/graph', label: '能力图谱', icon: Network },
+  { path: '/learning-curve', label: '能力证据', icon: ChartNoAxesCombined },
+  { path: '/history', label: '练习记录', icon: History },
+];
 
-  return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md px-6 py-4">
-      <div className="flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="p-2 bg-primary rounded-lg text-primary-foreground transform group-hover:scale-110 transition-transform duration-300">
-            <Brain size={24} />
-          </div>
-          <span className="text-xl font-bold tracking-tight">闪练 <span className="text-primary font-normal">FlashTrain</span></span>
-        </Link>
-        
-        <nav className="hidden xl:flex items-center gap-2">
-          <Link to="/" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/')}`}>
-            <Home size={18} />
-            <span>首页</span>
-          </Link>
-          <Link to="/skills" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/skills')}`}>
-            <BookOpen size={18} />
-            <span>任务库</span>
-          </Link>
-          <Link to="/graph" className={`px-4 py-2 rounded-lg text-sm ${isActive('/graph')}`}>能力图谱</Link>
-          <Link to="/learning-curve" className={`px-4 py-2 rounded-lg text-sm ${isActive('/learning-curve')}`}>能力证据</Link>
-          <Link to="/history" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/history')}`}>
-            <BarChart size={18} />
-            <span>练习记录</span>
-          </Link>
-          <Link to="/profile" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/profile')}`}>
-            <User size={18} />
-            <span>我的</span>
-          </Link>
-        </nav>
+export default function Header() {
+  const { pathname } = useLocation();
 
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-orange-50 rounded-full border border-orange-100">
-            <Zap size={16} className="text-orange-500 fill-orange-500" />
-            <span className="text-sm font-bold text-orange-600">持续学习</span>
-          </div>
-          <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-border">
-             <User className="text-muted-foreground" size={20} />
-          </div>
-        </div>
+  return <header className="workspace-sidebar">
+    <div className="sidebar-brand-row">
+      <Link to="/" className="brand-lockup" aria-label="闪练 FlashTrain 首页">
+        <span className="brand-mark"><Zap size={24} fill="currentColor" aria-hidden="true" /></span>
+        <span><strong>闪练<span className="brand-english">FlashTrain</span></strong><small>从知识，到行动。</small></span>
+      </Link>
+      <Link to="/profile" className="mobile-profile" aria-label="我的资料"><User size={19} /></Link>
+    </div>
+    <p className="sidebar-label">学习空间</p>
+    <nav aria-label="主导航" className="workspace-nav">
+      {navigation.map(({ path, label, icon: Icon }) => <Link key={path} to={path}
+        aria-current={pathname === path ? 'page' : undefined}
+        className={`workspace-nav-link ${pathname === path ? 'is-active' : ''}`}>
+        <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span>
+        {pathname === path && <span className="nav-active-dot" aria-hidden="true" />}
+      </Link>)}
+    </nav>
+    <div className="sidebar-bottom">
+      <div className="sidebar-note">
+        <span className="eyebrow">LEARN BY DOING</span>
+        <p>让学过的知识，<br />有一次被用上的机会。</p>
+        <Link to="/bridge">从一个小任务开始 <ArrowUpRight size={16} aria-hidden="true" /></Link>
       </div>
-      <nav aria-label="移动端导航" className="flex xl:hidden items-center flex-wrap gap-2 mt-4 text-sm">
-        <Link to="/" className={`px-3 py-2 rounded-lg ${isActive('/')}`}>首页</Link>
-        <Link to="/skills" className={`px-3 py-2 rounded-lg ${isActive('/skills')}`}>任务库</Link>
-        <Link to="/graph" className={`px-3 py-2 rounded-lg ${isActive('/graph')}`}>图谱</Link>
-        <Link to="/learning-curve" className={`px-3 py-2 rounded-lg ${isActive('/learning-curve')}`}>证据</Link>
-        <Link to="/history" className={`px-3 py-2 rounded-lg ${isActive('/history')}`}>记录</Link>
-        <Link to="/profile" className={`px-3 py-2 rounded-lg ${isActive('/profile')}`}>我的</Link>
-      </nav>
-    </header>
-  );
-};
-
-export default Header;
+      <Link to="/profile" className={`sidebar-profile ${pathname === '/profile' ? 'is-active' : ''}`} aria-current={pathname === '/profile' ? 'page' : undefined}>
+        <span className="profile-avatar"><User size={19} aria-hidden="true" /></span>
+        <span>我的学习档案<small>记录每一次行动</small></span>
+        <ArrowUpRight size={16} aria-hidden="true" />
+      </Link>
+    </div>
+  </header>;
+}

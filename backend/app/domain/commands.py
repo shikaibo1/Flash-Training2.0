@@ -80,6 +80,10 @@ class AtomicCreate(RequestModel):
     knowledge_ids: list[Identifier] = Field(default_factory=list, max_length=30)
     prerequisite_ids: list[Identifier] = Field(default_factory=list, max_length=20)
     contexts: list[Identifier] = Field(min_length=1, max_length=20)
+    trigger_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    applicability_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    common_misuses: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    clarification_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
 
 
 class CustomSkillRequest(RequestModel):

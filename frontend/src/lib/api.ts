@@ -1,4 +1,5 @@
 import type { Skill, PracticeContent, PracticeRecord, AtomicSkill, GraphData, EvidenceData, Recommendation, AgentTrace, EvidenceItem } from '../types';
+import type { BridgeCatalog, BridgeSession } from './bridge';
 
 // Backend address only. GPT credentials are stored exclusively in backend/.env.ai.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api';
@@ -16,6 +17,7 @@ export type SessionData = {
   atomic_skill_names?: Record<string, string>;
   answer?: string;
   evaluation_result?: EvaluationData;
+  bridge_case_id?: string | null; source_session_id?: string | null;
 };
 export type EvaluationData = {
   score: number; strengths: string[]; improvements: string[]; aiComment: string;
@@ -86,4 +88,12 @@ export const careerApi = {
   graph: () => request<GraphData>('/v2/graph'),
   evidence: (userId = 'default_user') => request<EvidenceData>(`/v2/evidence/${part(userId)}`),
   recommendations: (userId = 'default_user') => request<{ recommendations: Recommendation[] }>(`/v2/recommendations/${part(userId)}`),
+};
+
+export const bridgeApi = {
+  catalog: () => request<Envelope<BridgeCatalog>>('/v2/bridge/catalog'),
+  session: (sessionId: string, userId = 'default_user') =>
+    request<Envelope<BridgeSession>>(`/v2/bridge/sessions/${part(sessionId)}?user_id=${part(userId)}`),
+  diagnose: (sessionId: string, answers: Record<string, string>, userId = 'default_user') =>
+    post<Envelope<BridgeSession>>(`/v2/bridge/sessions/${part(sessionId)}/diagnosis`, { user_id: userId, answers }),
 };

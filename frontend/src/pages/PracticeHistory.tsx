@@ -188,7 +188,7 @@ const PracticeHistory = () => {
           filteredRecords.map((record, index) => (
             <Link
               key={record.record_id || index}
-              to={`/practice/${record.skill_id}`}
+              to={`/practice/${encodeURIComponent(record.skill_id)}${record.session_id ? `?session_id=${encodeURIComponent(record.session_id)}` : ''}`}
               state={{ fromHistory: true, record }}
               className="block no-underline text-inherit"
             >

@@ -24,6 +24,11 @@ class AtomicSkill(Model):
     knowledge_ids: list[str] = Field(default_factory=list)
     prerequisite_ids: list[str] = Field(default_factory=list)
     contexts: list[str] = Field(min_length=1, max_length=20)
+    # Empty lists mean this older/custom definition has no authored conditions yet.
+    trigger_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    applicability_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    common_misuses: list[FeedbackText] = Field(default_factory=list, max_length=10)
+    clarification_conditions: list[FeedbackText] = Field(default_factory=list, max_length=10)
     version: int = Field(default=1, ge=1)
 
 
@@ -176,6 +181,8 @@ class PracticeRecord(Model):
     mode: str = "guided"
     context: str = "通用"
     assistance_used: bool = False
+    bridge_case_id: str | None = None
+    source_session_id: str | None = None
 
 
 class AtomScore(AtomicSkill):
@@ -194,6 +201,8 @@ class SessionStarted(Model):
     mode: Literal["guided", "independent", "transfer"]
     atom_snapshot: list[AtomicSkill]
     agent_trace: list[AgentStep]
+    bridge_case_id: str | None = None
+    source_session_id: str | None = None
 
 
 class Submission(Model):
@@ -216,6 +225,8 @@ class SessionDetails(Model):
     mode: Literal["guided", "independent", "transfer"]
     atom_snapshot: list[AtomicSkill]
     agent_trace: list[AgentStep]
+    bridge_case_id: str | None = None
+    source_session_id: str | None = None
 
 
 class SessionHistory(Model):
@@ -229,6 +240,8 @@ class SessionHistory(Model):
     end_time: str | None
     final_result: Evaluation | None
     mode: Literal["guided", "independent", "transfer"]
+    bridge_case_id: str | None = None
+    source_session_id: str | None = None
 
 
 class SkillStatistics(Model):

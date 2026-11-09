@@ -12,7 +12,7 @@ from .infrastructure.ai import OpenAIJSONClient
 from .bootstrap import build_services
 from .api.responses import ErrorResponse, HealthResponse
 from .errors import AppError
-from .api import skills, practice, progress, graph, evidence
+from .api import skills, practice, progress, graph, evidence, bridge
 
 
 def create_app(settings=None, ai=None):
@@ -61,4 +61,5 @@ def create_app(settings=None, ai=None):
     app.include_router(progress.router)
     app.include_router(graph.router)
     app.include_router(evidence.router)
+    app.include_router(bridge.router)
     return app

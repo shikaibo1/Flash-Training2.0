@@ -9,6 +9,7 @@ from ..domain.ports import UnitOfWork, UnitOfWorkFactory
 from ..errors import AppError
 from .content import ContentService
 from .skills import require_active
+from .bridge import prepare_case
 
 
 class PracticeService:
@@ -22,8 +23,14 @@ class PracticeService:
         return self._visible_content(self._content.generate(skill, effective, atoms), effective)
 
     @staticmethod
-    def _prepare(unit: UnitOfWork, skill, params: JsonObject) -> tuple[list[AtomicSkill], JsonObject]:
+    def _prepare(unit: UnitOfWork, skill, params: JsonObject, user_id: str | None = None) -> tuple[list[AtomicSkill], JsonObject]:
         effective = {**skill.default_params, **params}
+        # Case defaults belong to the case; explicit caller choices still win.
+        if params.get("bridge_case_id") is not None:
+            effective.pop("mode", None)
+            effective.pop("target_atomic_ids", None)
+            effective.update({key: params[key] for key in ("mode", "target_atomic_ids") if key in params})
+        effective = prepare_case(unit, skill, effective, user_id)
         mode = effective.get("mode", "guided")
         if mode not in ("guided", "independent", "transfer"):
             raise AppError("请选择引导、独立或迁移练习模式。", 422, "invalid_practice_mode")
@@ -48,7 +55,7 @@ class PracticeService:
     def start(self, user_id: str, skill_id: str, params: JsonObject) -> SessionStarted:
         with self._work.read() as unit:
             skill = require_active(unit.skills.get(skill_id))
-            atoms, effective = self._prepare(unit, skill, params)
+            atoms, effective = self._prepare(unit, skill, params, user_id)
         content = self._content.generate(skill, effective, atoms)
         session = PracticeSession(session_id=uuid.uuid4().hex, user_id=user_id, skill_id=skill_id,
             content=content, skill_snapshot=skill, atom_snapshot=atoms, params=effective, started_at=utc_now())
@@ -60,7 +67,8 @@ class PracticeService:
             names = {a.atomic_skill_id: a.name for a in atoms}
         return SessionStarted(session_id=session.session_id, skill_id=skill_id, question=content.title,
             content=self._visible_content(content, effective), start_time=session.started_at, atomic_skill_names=names,
-            mode=effective["mode"], atom_snapshot=atoms, agent_trace=content.agent_trace)
+            mode=effective["mode"], atom_snapshot=atoms, agent_trace=content.agent_trace,
+            bridge_case_id=effective.get("bridge_case_id"), source_session_id=effective.get("source_session_id"))
 
     def evaluate(self, skill_id: str, answer: str, reference: str, params: JsonObject) -> Evaluation:
         with self._work.read() as unit:
@@ -99,6 +107,7 @@ class PracticeService:
                 atomic_skill_names={a.atomic_skill_id: a.name for a in atoms},
                 evidence=result.evidence, agent_trace=[*session.content.agent_trace, *result.agent_trace],
                 mode=session.params["mode"], context=skill.context,
+                bridge_case_id=session.params.get("bridge_case_id"), source_session_id=session.params.get("source_session_id"),
                 assistance_used=assistance_used or session.params["mode"] == "guided")
             unit.practices.complete(session_id, answer, result, stamp)
             unit.practices.add_record(record)
@@ -115,7 +124,8 @@ class PracticeService:
             details = SessionDetails(session_id=session_id, skill_id=session.skill_id, status=session.status,
                 content=self._visible_content(session.content, session.params, session.status == "completed"),
                 start_time=session.started_at, atomic_skill_names=names,
-                mode=session.params["mode"], atom_snapshot=session.atom_snapshot, agent_trace=session.content.agent_trace)
+                mode=session.params["mode"], atom_snapshot=session.atom_snapshot, agent_trace=session.content.agent_trace,
+                bridge_case_id=session.params.get("bridge_case_id"), source_session_id=session.params.get("source_session_id"))
             if session.status == "completed":
                 completed = self._completed(unit, session)
                 details = details.model_copy(update={"evaluation_result": completed.evaluation_result,

@@ -6,6 +6,7 @@ from ..domain.catalog import KnowledgeConcept, Role
 from ..domain.models import AtomicSkill, Model, Skill
 from .database import Database
 from .repositories.skills import SkillRepository
+from .serialization import dump
 
 
 class CatalogSeed(Model):
@@ -70,12 +71,38 @@ def _validate_references(catalog: CatalogSeed) -> None:
         raise ValueError("Catalog atomic prerequisites contain a cycle")
 
 
+def _add_authored_conditions(connection, catalog: CatalogSeed) -> None:
+    """Upgrade unchanged v1 definitions only; saved practice snapshots stay intact."""
+    condition_fields = {"trigger_conditions", "applicability_conditions", "common_misuses",
+                        "clarification_conditions"}
+    ignored_fields = condition_fields | {"version"}
+    repository = SkillRepository(connection)
+    current_atoms = {atom.atomic_skill_id: atom for atom in repository.atoms()}
+    for authored in catalog.atoms:
+        current = current_atoms.get(authored.atomic_skill_id)
+        if current is None or current.version != 1 or authored.version != 2:
+            continue
+        if any(getattr(current, field) for field in condition_fields):
+            continue
+        # User edits to a name, action, rubric, context or mapping must not be overwritten.
+        if current.model_dump(exclude=ignored_fields) != authored.model_dump(exclude=ignored_fields):
+            continue
+        if not all(getattr(authored, field) for field in condition_fields):
+            continue
+        definition = authored.model_dump(exclude={"atomic_skill_id", "name", "description", "categories"})
+        connection.execute("UPDATE atomic_skills SET definition_json=? WHERE atomic_skill_id=?",
+                           (dump(definition), authored.atomic_skill_id))
+
+
 def seed_catalog(database: Database, path: Path) -> None:
     with database.transaction() as connection:
         seeded = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_version'").fetchone()
         if seeded:
             if seeded[0] != "2":
-                raise RuntimeError("Unsupported catalog version; select a fresh schema v2 database")
+                raise RuntimeError("Unsupported catalog version; select a fresh database")
+            catalog = CatalogSeed.model_validate(json.loads(Path(path).read_text(encoding="utf-8")))
+            _validate_references(catalog)
+            _add_authored_conditions(connection, catalog)
             return
         catalog = CatalogSeed.model_validate(json.loads(Path(path).read_text(encoding="utf-8")))
         _validate_references(catalog)
