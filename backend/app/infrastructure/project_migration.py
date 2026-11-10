@@ -1,4 +1,4 @@
-"""Additive v2 -> v3 migration. No legacy rows are updated or discarded."""
+"""Learning-project tables, added alongside bridge storage by the v4 migration."""
 PROJECT_SCHEMA = """
 CREATE TABLE learning_projects (
     project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(user_id),

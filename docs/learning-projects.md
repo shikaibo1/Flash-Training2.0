@@ -35,7 +35,7 @@
 - `domain/evidence_views.py` 与 `application/evidence.py`：把新观察与已有单次练习证据汇总，不覆盖旧历史。
 - 前端 `Projects.tsx`、`ProjectWorkspace.tsx`：目标入口和工作台；服务端自动保存草稿，浏览器保存即时刷新的恢复副本。并发版本冲突会拒绝覆盖。
 
-数据库由schema v2增量升级为v3，**目录版本仍为v2，文件名保持原样**。新增 `learning_projects`、`project_operations`、`project_observations` 三张表，不重写原有业务行；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
+数据库由schema v2或两种历史v3增量升级为v4，**目录版本仍为v2，文件名保持原样**。保留或补齐 `learning_projects`、`project_operations`、`project_observations` 与 `bridge_diagnoses`，保留学习记录和项目快照；目录启动逻辑会为未自定义的原始原子补充已编写的条件字段；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
 
 AI配置沿用 `backend/.env.ai`，前端没有密钥。修改诊断提示词在 `application/project_coach.py`，底层API适配仍在 `infrastructure/ai.py`。
 

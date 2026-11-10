@@ -78,6 +78,15 @@ export default function Home() {
           </span>
         }
       />
+      <Link className="panel bridge-entry" to="/bridge">
+        <span>
+          <strong>迁移训练 · 从学过到会用</strong>
+          <small className="block mt-1 text-muted-foreground">
+            基线、表达变式、条件边界与综合交付，保留配对观察与规则诊断。
+          </small>
+        </span>
+        <ArrowRight size={19} />
+      </Link>
       {health.data && !health.data.ai_configured && (
         <Notice>
           AI 服务尚未配置。你仍可浏览任务和图谱，配置后即可开始练习。

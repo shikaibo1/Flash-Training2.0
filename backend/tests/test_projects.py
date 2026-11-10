@@ -324,7 +324,7 @@ class MigrationTests(unittest.TestCase):
             root=Path(folder); db=self.make_v2(root)
             with db.read() as c: original=tuple(c.execute('SELECT * FROM users').fetchone())
             db.initialize(); db.initialize()
-            self.assertEqual(db.check_health(),3)
+            self.assertEqual(db.check_health(),4)
             with db.read() as c: self.assertEqual(tuple(c.execute('SELECT * FROM users').fetchone()),original)
             backups=list((root/'backups').glob('*.sqlite3')); self.assertEqual(len(backups),1)
             with closing(sqlite3.connect(backups[0])) as c:

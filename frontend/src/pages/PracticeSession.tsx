@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FeedbackPanel from "../components/FeedbackPanel";
 import { PageHeading } from "../components/workspace/Primitives";
 import { useQueryClient } from "@tanstack/react-query";
+import BridgeFeedback from "../components/BridgeFeedback";
 import { practiceV1Api } from "../lib/api";
 import type { SessionData } from "../lib/api";
 import { scoreDimensions } from "../lib/feedback";
@@ -28,12 +29,81 @@ type Session = SessionData;
 // Shares an in-flight request across React effect remounts; no duplicate model requests.
 const pendingSessions = new Map<string, Promise<Session>>();
 
+function practiceCacheKey(
+  skillId: string,
+  mode: string,
+  targetKey: string,
+  bridgeCaseId: string,
+  sourceSessionId: string,
+) {
+  const base = `flash-session:${userId}:${skillId}:${mode}:${targetKey}`;
+  return bridgeCaseId || sourceSessionId
+    ? `${base}:bridge:${encodeURIComponent(bridgeCaseId)}:source:${encodeURIComponent(sourceSessionId)}`
+    : base;
+}
+
+function cacheKeyForSession(
+  session: Session,
+  mode: string,
+  targetKey: string,
+  bridgeCaseId: string,
+  sourceSessionId: string,
+) {
+  const caseId = session.bridge_case_id || bridgeCaseId;
+  const atoms = caseId
+    ? (
+        session.content.target_atomic_ids ||
+        session.atom_snapshot?.map((atom) => atom.atomic_skill_id) ||
+        []
+      )
+        .slice()
+        .sort()
+        .join(",")
+    : targetKey;
+  return practiceCacheKey(
+    session.skill_id,
+    session.mode || mode,
+    atoms,
+    caseId,
+    session.source_session_id || sourceSessionId,
+  );
+}
+
+function forgetCachedSession(
+  session: Session,
+  mode: string,
+  targetKey: string,
+  bridgeCaseId: string,
+  sourceSessionId: string,
+) {
+  const keys = [
+    practiceCacheKey(
+      session.skill_id,
+      mode,
+      targetKey,
+      bridgeCaseId,
+      sourceSessionId,
+    ),
+    cacheKeyForSession(session, mode, targetKey, bridgeCaseId, sourceSessionId),
+  ];
+  for (const key of keys)
+    if (sessionCache.read(key) === session.session_id) sessionCache.remove(key);
+}
+
 async function obtainSession(
   skillId: string,
   mode: string,
   targetIds: string[],
+  bridgeCaseId: string,
+  sourceSessionId: string,
 ): Promise<Session> {
-  const key = `flash-session:${userId}:${skillId}:${mode}:${targetIds.join(",")}`;
+  const key = practiceCacheKey(
+    skillId,
+    mode,
+    targetIds.join(","),
+    bridgeCaseId,
+    sourceSessionId,
+  );
   const pending = pendingSessions.get(key);
   if (pending) return pending;
   const work = (async () => {
@@ -57,6 +127,8 @@ async function obtainSession(
     const result = await practiceV1Api.startPractice(userId, skillId, {
       mode,
       ...(targetIds.length ? { target_atomic_ids: targetIds } : {}),
+      ...(bridgeCaseId ? { bridge_case_id: bridgeCaseId } : {}),
+      ...(sourceSessionId ? { source_session_id: sourceSessionId } : {}),
     });
     sessionCache.write(key, result.data.session_id);
     return result.data as Session;
@@ -84,6 +156,9 @@ const PracticeSession = () => {
   )
     .sort()
     .join(",");
+  const bridgeCaseId = search.get("bridge_case_id") || "";
+  const sourceSessionId = search.get("source_session_id") || "";
+  const requestedSessionId = search.get("session_id") || "";
   const [assisted, setAssisted] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
@@ -140,6 +215,7 @@ const PracticeSession = () => {
         setEvidence(historyRecord.evidence || []);
         setTrace(historyRecord.agent_trace || []);
         setAnswer(historyRecord.transcript || "");
+        setAssisted(Boolean(historyRecord.assistance_used));
         setFeedback({
           score: historyRecord.score,
           strengths: historyRecord.strengths || [],
@@ -176,25 +252,44 @@ const PracticeSession = () => {
         return;
       }
       try {
-        let skillId = id;
-        if (!id || id === "random") {
-          const skills = (await practiceV1Api.getAvailableSkills()).skills;
-          skillId = skills[Math.floor(Math.random() * skills.length)]?.skill_id;
-        }
-        if (!skillId) throw new Error("暂无可练习的职业任务。");
-        if ((!id || id === "random") && active) {
-          navigate(
-            `/practice/${encodeURIComponent(skillId)}${location.search}`,
-            { replace: true },
+        let value: Session;
+        if (requestedSessionId) {
+          value = (await practiceV1Api.getSession(userId, requestedSessionId))
+            .data;
+        } else {
+          let skillId = id;
+          if (!id || id === "random") {
+            const skills = (await practiceV1Api.getAvailableSkills()).skills;
+            skillId =
+              skills[Math.floor(Math.random() * skills.length)]?.skill_id;
+          }
+          if (!skillId) throw new Error("暂无可练习的职业任务。");
+          if ((!id || id === "random") && active) {
+            navigate(
+              `/practice/${encodeURIComponent(skillId)}${location.search}`,
+              { replace: true },
+            );
+            return;
+          }
+          if (!active) return;
+          value = await obtainSession(
+            skillId,
+            mode,
+            targetKey ? targetKey.split(",") : [],
+            bridgeCaseId,
+            sourceSessionId,
           );
-          return;
+          if (active && bridgeCaseId) {
+            // A concrete session URL restores this exact case after completion/reload.
+            const sessionSearch = new URLSearchParams(location.search);
+            sessionSearch.set("session_id", value.session_id);
+            navigate(
+              `/practice/${encodeURIComponent(value.skill_id)}?${sessionSearch}`,
+              { replace: true },
+            );
+            return;
+          }
         }
-        if (!active) return;
-        const value = await obtainSession(
-          skillId,
-          mode,
-          targetKey ? targetKey.split(",") : [],
-        );
         if (active) {
           setSession(value);
           setAssisted(
@@ -237,7 +332,18 @@ const PracticeSession = () => {
       active = false;
       mounted.current = false;
     };
-  }, [id, historyRecord, revision, mode, targetKey, navigate, location.search]);
+  }, [
+    id,
+    historyRecord,
+    revision,
+    mode,
+    targetKey,
+    bridgeCaseId,
+    sourceSessionId,
+    requestedSessionId,
+    navigate,
+    location.search,
+  ]);
 
   const submit = async () => {
     if (!session || !answer.trim() || submitLock.current === session.session_id)
@@ -255,9 +361,13 @@ const PracticeSession = () => {
         assisted,
       );
       const evaluation = result.data.evaluation_result;
-      const cacheKey = `flash-session:${userId}:${session.skill_id}:${mode}:${targetKey}`;
-      if (sessionCache.read(cacheKey) === session.session_id)
-        sessionCache.remove(cacheKey);
+      forgetCachedSession(
+        session,
+        mode,
+        targetKey,
+        bridgeCaseId,
+        sourceSessionId,
+      );
       sessionCache.remove(`flash-draft:${session.session_id}`);
       window.dispatchEvent(
         new CustomEvent("practice:record-saved", {
@@ -287,7 +397,7 @@ const PracticeSession = () => {
           ),
         });
         // Completed sessions can expose reference material withheld during independent work.
-        if (mode !== "guided") {
+        if (displayMode !== "guided") {
           try {
             const completed = (
               await practiceV1Api.getSession(userId, requestSessionId)
@@ -323,6 +433,44 @@ const PracticeSession = () => {
         "辅助使用标记无法保存；本次提交仍会记录，刷新前请先完成提交。",
       );
   };
+
+  const startAgain = () => {
+    if (session)
+      forgetCachedSession(
+        session,
+        mode,
+        targetKey,
+        bridgeCaseId,
+        sourceSessionId,
+      );
+    if (requestedSessionId) {
+      const nextSearch = new URLSearchParams(location.search);
+      nextSearch.delete("session_id");
+      if (session) {
+        nextSearch.set("mode", session.mode || mode);
+        nextSearch.set(
+          "atoms",
+          (
+            session.content.target_atomic_ids ||
+            session.atom_snapshot?.map((atom) => atom.atomic_skill_id) ||
+            []
+          ).join(","),
+        );
+        if (session.bridge_case_id)
+          nextSearch.set("bridge_case_id", session.bridge_case_id);
+        if (session.source_session_id)
+          nextSearch.set("source_session_id", session.source_session_id);
+      }
+      navigate(
+        `/practice/${encodeURIComponent(session?.skill_id || id || "random")}?${nextSearch}`,
+        { replace: true },
+      );
+    } else setRevision((value) => value + 1);
+  };
+
+  const isBridge = Boolean(
+    session?.bridge_case_id || bridgeCaseId || historyRecord?.bridge_case_id,
+  );
   return (
     <div className="page-stack practice-workspace space-y-6">
       <PageHeading
@@ -335,11 +483,11 @@ const PracticeSession = () => {
         }
       />
       <Link
-        to="/skills"
+        to={isBridge ? "/bridge" : "/skills"}
         className="inline-flex items-center gap-2 text-muted-foreground"
       >
         <ChevronLeft size={20} />
-        返回任务库
+        {isBridge ? "返回迁移训练路径" : "返回任务库"}
       </Link>
       <div className="panel practice-panel space-y-6">
         {loading ? (
@@ -366,22 +514,19 @@ const PracticeSession = () => {
                 {content && !feedback && !submitting && (
                   <div className="space-y-2">
                     <p className="text-sm">
-                      可先复制当前回答；放弃后旧草稿仍按原会话保留，重新出题会调用模型并产生费用。
+                      可先复制当前回答；放弃后旧草稿仍按原会话保留。
+                      {isBridge
+                        ? "重新作答会创建同一固定案例的新会话。"
+                        : "重新出题会调用模型并产生费用。"}
                     </p>
-                    <button
-                      className="underline"
-                      onClick={() => {
-                        if (session)
-                          sessionCache.remove(
-                            `flash-session:${userId}:${session.skill_id}:${mode}:${targetKey}`,
-                          );
-                        setRevision((v) => v + 1);
-                      }}
-                    >
-                      放弃本题，重新出题
+                    <button className="underline" onClick={startAgain}>
+                      放弃本次，重新开始
                     </button>
-                    <Link className="ml-4 underline" to="/skills">
-                      选择其他任务
+                    <Link
+                      className="ml-4 underline"
+                      to={isBridge ? "/bridge" : "/skills"}
+                    >
+                      选择其他练习
                     </Link>
                   </div>
                 )}
@@ -389,7 +534,7 @@ const PracticeSession = () => {
             )}
             {content && (
               <>
-                <span className="text-sm text-primary">
+                <span className="context-badge">
                   {content.category} · {content.difficulty} ·{" "}
                   {
                     {
@@ -401,7 +546,7 @@ const PracticeSession = () => {
                 </span>
                 <h2 className="practice-title">{content.title}</h2>
                 {/* Model text is rendered as text, never injected as executable HTML. */}
-                <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                <p className="whitespace-pre-wrap leading-loose text-sm text-muted-foreground">
                   {content.description}
                 </p>
                 {content.materials && (
@@ -411,7 +556,7 @@ const PracticeSession = () => {
                   </section>
                 )}
                 {session?.atom_snapshot && (
-                  <details className="border rounded-lg p-4">
+                  <details className="border rounded-xl p-4 text-sm leading-relaxed">
                     <summary className="cursor-pointer font-medium">
                       本次目标与评分依据
                     </summary>
@@ -424,10 +569,13 @@ const PracticeSession = () => {
                           ),
                       )
                       .map((atom) => (
-                        <div key={atom.atomic_skill_id} className="mt-3">
+                        <div
+                          key={atom.atomic_skill_id}
+                          className="mt-4 border-t pt-3"
+                        >
                           <h3 className="font-semibold">{atom.name}</h3>
                           <p>{atom.action}</p>
-                          <ul className="list-disc pl-5">
+                          <ul className="list-disc pl-5 text-muted-foreground">
                             {atom.rubric.map((item) => (
                               <li key={item}>{item}</li>
                             ))}
@@ -436,7 +584,7 @@ const PracticeSession = () => {
                       ))}
                   </details>
                 )}
-                {content.hint && (mode === "guided" || feedback) && (
+                {content.hint && (displayMode === "guided" || feedback) && (
                   <div>
                     <button
                       className="text-primary"
@@ -459,29 +607,30 @@ const PracticeSession = () => {
                     )}
                   </div>
                 )}
-                {content.example_answer && (mode === "guided" || feedback) && (
-                  <div>
-                    <button
-                      className="text-primary"
-                      disabled={submitting}
-                      onClick={() => {
-                        if (!feedback) revealAssistance();
-                        setShowExample((v) => !v);
-                      }}
-                    >
-                      {showExample
-                        ? "收起参考答案"
-                        : feedback
-                          ? "查看参考答案"
-                          : "查看参考答案（记录辅助使用）"}
-                    </button>
-                    {showExample && (
-                      <p className="mt-3 p-4 bg-blue-50 rounded-lg whitespace-pre-wrap">
-                        {content.example_answer}
-                      </p>
-                    )}
-                  </div>
-                )}
+                {content.example_answer &&
+                  (displayMode === "guided" || feedback) && (
+                    <div>
+                      <button
+                        className="text-primary"
+                        disabled={submitting}
+                        onClick={() => {
+                          if (!feedback) revealAssistance();
+                          setShowExample((v) => !v);
+                        }}
+                      >
+                        {showExample
+                          ? "收起参考答案"
+                          : feedback
+                            ? "查看参考答案"
+                            : "查看参考答案（记录辅助使用）"}
+                      </button>
+                      {showExample && (
+                        <p className="mt-3 p-4 bg-blue-50 rounded-lg whitespace-pre-wrap">
+                          {content.example_answer}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 {feedback ? (
                   <>
                     <div className="p-4 bg-secondary rounded-lg whitespace-pre-wrap">
@@ -535,23 +684,17 @@ const PracticeSession = () => {
                       </Link>
                     ) : (
                       <button
-                        onClick={() => {
-                          if (session)
-                            sessionCache.remove(
-                              `flash-session:${userId}:${session.skill_id}:${mode}:${targetKey}`,
-                            );
-                          setRevision((v) => v + 1);
-                        }}
+                        onClick={startAgain}
                         className="inline-flex items-center gap-2 text-primary"
                       >
                         <RefreshCw size={18} />
-                        再练一道
+                        {isBridge ? "重新作答此案例" : "再练一道"}
                       </button>
                     )}
                   </>
                 ) : (
                   <div className="space-y-4">
-                    {mode !== "guided" && (
+                    {displayMode !== "guided" && (
                       <label className="flex items-center gap-2">
                         <input
                           type="checkbox"
@@ -611,7 +754,7 @@ const PracticeSession = () => {
                       </button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {mode === "guided"
+                      {displayMode === "guided"
                         ? "引导模式结果仅作为辅助完成证据；查看提示与示例仍需主动点击。"
                         : assisted
                           ? "本次已记录辅助使用。"
@@ -624,6 +767,15 @@ const PracticeSession = () => {
                       </p>
                     )}
                   </div>
+                )}
+                {isBridge && session && (
+                  <BridgeFeedback
+                    key={session.session_id}
+                    sessionId={session.session_id}
+                    completed={Boolean(feedback)}
+                    assistanceUsed={assisted || displayMode === "guided"}
+                    atomicNames={session.atomic_skill_names}
+                  />
                 )}
                 {trace.length > 0 && (
                   <details className="border-t pt-4">

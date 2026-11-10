@@ -86,5 +86,6 @@ class PracticeRepository:
             values.append(SessionHistory(session_id=session.session_id, user_id=session.user_id,
                 skill_id=session.skill_id, content=session.content, question=session.content.title,
                 status=session.status, start_time=session.started_at, end_time=session.completed_at,
-                final_result=session.result, mode=session.params["mode"]))
+                final_result=session.result, mode=session.params["mode"],
+                bridge_case_id=session.params.get("bridge_case_id"), source_session_id=session.params.get("source_session_id")))
         return values

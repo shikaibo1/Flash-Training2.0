@@ -7,7 +7,14 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from .project_migration import PROJECT_SCHEMA
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+BRIDGE_SCHEMA = """
+CREATE TABLE bridge_diagnoses (
+    session_id TEXT PRIMARY KEY REFERENCES practice_sessions(session_id),
+    user_id TEXT NOT NULL REFERENCES users(user_id),
+    payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+)
+"""
 SCHEMA = """
 CREATE TABLE users (user_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
 CREATE TABLE atomic_skills (
@@ -95,10 +102,10 @@ class Database:
         conn = self.connect()
         try:
             # Snapshot before applying the first schema change; backup is outside the write lock.
-            if conn.execute("PRAGMA user_version").fetchone()[0] == 2:
+            if conn.execute("PRAGMA user_version").fetchone()[0] in (2, 3):
                 backup_dir = self.path.parent / "backups"
                 backup_dir.mkdir(exist_ok=True)
-                backup_path = backup_dir / ("before-v3-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8] + ".sqlite3")
+                backup_path = backup_dir / ("before-v4-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8] + ".sqlite3")
                 with closing(sqlite3.connect(backup_path)) as destination:
                     conn.backup(destination)
             conn.execute("PRAGMA journal_mode=WAL")
@@ -106,18 +113,27 @@ class Database:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise RuntimeError("Database schema is newer than this application")
-            if version not in (0, 2, SCHEMA_VERSION):
-                raise RuntimeError("This application requires a fresh schema v2 database; select a new database path. Existing data was not modified.")
+            if version not in (0, 2, 3, SCHEMA_VERSION):
+                raise RuntimeError("This application supports schema v2, v3 and v4; schema v1 requires a new database path. Existing data was not modified.")
             if version == 0:
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").fetchone():
                     raise RuntimeError("The selected database is not an empty schema v2 database; select a new database path.")
                 for statement in SCHEMA.split(";"):
                     if statement.strip():
                         conn.execute(statement)
-            if version in (0, 2):
-                for statement in PROJECT_SCHEMA.split(";"):
-                    if statement.strip():
-                        conn.execute(statement)
+            if version in (0, 2, 3):
+                # Two historical v3 builds added different tables. Detect capabilities,
+                # preserve both histories, and advance to one unambiguous v4 schema.
+                tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                project_tables = {"learning_projects", "project_operations", "project_observations"}
+                if project_tables & tables and not project_tables <= tables:
+                    raise RuntimeError("Incomplete learning-project schema; restore a consistent backup before upgrading")
+                if not project_tables <= tables:
+                    for statement in PROJECT_SCHEMA.split(";"):
+                        if statement.strip():
+                            conn.execute(statement)
+                if "bridge_diagnoses" not in tables:
+                    conn.execute(BRIDGE_SCHEMA)
                 conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
         except BaseException:

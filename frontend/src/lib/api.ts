@@ -1,3 +1,4 @@
+import type { BridgeCatalog, BridgeSession } from "./bridge";
 import type {
   Skill,
   PracticeContent,
@@ -28,6 +29,8 @@ export class ApiError extends Error {
 
 type Envelope<T> = { error: false; msg: string; data: T };
 export type SessionData = {
+  bridge_case_id?: string | null;
+  source_session_id?: string | null;
   session_id: string;
   skill_id: string;
   content: PracticeContent;
@@ -191,5 +194,22 @@ export const careerApi = {
   recommendations: (userId = "default_user") =>
     request<{ recommendations: Recommendation[] }>(
       `/v2/recommendations/${part(userId)}`,
+    ),
+};
+
+export const bridgeApi = {
+  catalog: () => request<Envelope<BridgeCatalog>>("/v2/bridge/catalog"),
+  session: (sessionId: string, userId = "default_user") =>
+    request<Envelope<BridgeSession>>(
+      `/v2/bridge/sessions/${part(sessionId)}?user_id=${part(userId)}`,
+    ),
+  diagnose: (
+    sessionId: string,
+    answers: Record<string, string>,
+    userId = "default_user",
+  ) =>
+    post<Envelope<BridgeSession>>(
+      `/v2/bridge/sessions/${part(sessionId)}/diagnosis`,
+      { user_id: userId, answers },
     ),
 };

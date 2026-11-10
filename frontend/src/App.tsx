@@ -16,6 +16,7 @@ const PracticeSession = lazy(() => import("./pages/PracticeSession"));
 const Profile = lazy(() => import("./pages/Profile"));
 const PracticeHistory = lazy(() => import("./pages/PracticeHistory"));
 const LearningCurve = lazy(() => import("./pages/LearningCurve"));
+const Bridge = lazy(() => import("./pages/Bridge"));
 const Projects = lazy(() => import("./pages/Projects"));
 const ProjectWorkspace = lazy(() => import("./pages/ProjectWorkspace"));
 
@@ -59,6 +60,7 @@ const App = () => (
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectRoute />} />
               <Route path="/graph" element={<KnowledgeGraph />} />
+              <Route path="/bridge" element={<Bridge />} />
               <Route path="/skills" element={<SkillsLibrary />} />
               <Route path="/practice/:id" element={<PracticeSession />} />
               <Route path="/practice" element={<PracticeSession />} />

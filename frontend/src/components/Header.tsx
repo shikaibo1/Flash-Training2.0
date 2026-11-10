@@ -4,6 +4,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowUpRight,
   BookOpen,
+  Route,
   ChevronRight,
   CircleUserRound,
   ClipboardList,
@@ -17,6 +18,7 @@ import {
 const navigation = [
   { to: "/", label: "学习概览", short: "概览", icon: LayoutDashboard },
   { to: "/projects", label: "学习目标", short: "目标", icon: Sprout },
+  { to: "/bridge", label: "迁移训练", short: "迁移", icon: Route },
   { to: "/skills", label: "任务练习", short: "任务", icon: BookOpen },
   { to: "/graph", label: "能力图谱", short: "图谱", icon: GitBranch },
   { to: "/learning-curve", label: "能力证据", short: "证据", icon: Shapes },
@@ -63,7 +65,7 @@ export default function Header() {
         </Link>
         <div className="sidebar-section-label">学习空间</div>
         <nav className="sidebar-nav">
-          {navigation.slice(0, 5).map(({ to, label, icon: Icon }) => (
+          {navigation.slice(0, 6).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -80,7 +82,7 @@ export default function Header() {
         </nav>
         <div className="sidebar-section-label review-label">学习回顾</div>
         <nav className="sidebar-nav">
-          {navigation.slice(5).map(({ to, label, icon: Icon }) => (
+          {navigation.slice(6).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -149,17 +151,23 @@ export default function Header() {
         </div>
       </header>
       <nav className="mobile-navigation" aria-label="移动端导航">
-        {navigation.slice(0, 5).map(({ to, short, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === "/"}
-            className={({ isActive }) => (isActive ? "active" : "")}
-          >
-            <Icon size={20} strokeWidth={1.7} />
-            <span>{short}</span>
-          </NavLink>
-        ))}
+        {navigation
+          .filter((item) =>
+            ["/", "/projects", "/bridge", "/graph", "/learning-curve"].includes(
+              item.to,
+            ),
+          )
+          .map(({ to, short, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              className={({ isActive }) => (isActive ? "active" : "")}
+            >
+              <Icon size={20} strokeWidth={1.7} />
+              <span>{short}</span>
+            </NavLink>
+          ))}
       </nav>
     </>
   );

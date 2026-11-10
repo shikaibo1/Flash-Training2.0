@@ -31,7 +31,7 @@ export function RecordList({
             </span>
             <Link
               className="record-main"
-              to={`/practice/${encodeURIComponent(record.skill_id)}`}
+              to={`/practice/${encodeURIComponent(record.skill_id)}${record.session_id ? `?session_id=${encodeURIComponent(record.session_id)}` : ""}`}
               state={{ fromHistory: true, record }}
             >
               <h3>{record.title || record.skill_name}</h3>
@@ -62,7 +62,7 @@ export function RecordList({
             </div>
             <Link
               className="record-open"
-              to={`/practice/${encodeURIComponent(record.skill_id)}`}
+              to={`/practice/${encodeURIComponent(record.skill_id)}${record.session_id ? `?session_id=${encodeURIComponent(record.session_id)}` : ""}`}
               state={{ fromHistory: true, record }}
               aria-label={`查看${record.title || record.skill_name}的反馈`}
             >

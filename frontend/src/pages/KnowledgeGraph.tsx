@@ -478,6 +478,31 @@ export default function KnowledgeGraph() {
                           <dd>{atom.boundary}</dd>
                         </div>
                       </dl>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {(
+                          [
+                            ["触发线索", atom.trigger_conditions],
+                            ["适用条件", atom.applicability_conditions],
+                            ["常见误用", atom.common_misuses],
+                            ["需要澄清的情况", atom.clarification_conditions],
+                          ] as const
+                        ).map(([title, conditions]) => (
+                          <section key={title} className="condition-panel">
+                            <h3 className="font-semibold">{title}</h3>
+                            {conditions?.length ? (
+                              <ul className="list-disc pl-5 space-y-1">
+                                {conditions.map((condition) => (
+                                  <li key={condition}>{condition}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                本定义尚未补充。
+                              </p>
+                            )}
+                          </section>
+                        ))}
+                      </div>
                       <h3 className="font-semibold">可观察评分依据</h3>
                       <ul className="list-disc pl-5 space-y-1">
                         {atom.rubric.map((item) => (

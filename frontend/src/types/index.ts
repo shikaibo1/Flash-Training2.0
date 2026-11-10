@@ -23,6 +23,10 @@ export interface AtomicSkill {
   input_spec: string;
   output_spec: string;
   boundary: string;
+  trigger_conditions: string[];
+  applicability_conditions: string[];
+  common_misuses: string[];
+  clarification_conditions: string[];
   rubric: string[];
   knowledge_ids: string[];
   prerequisite_ids: string[];
@@ -95,6 +99,8 @@ export interface PracticeContent {
 
 // 练习记录接口
 export interface PracticeRecord {
+  bridge_case_id?: string | null;
+  source_session_id?: string | null;
   mode?: string;
   context?: string;
   assistance_used?: boolean;
