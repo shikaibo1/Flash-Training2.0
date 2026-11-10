@@ -14,8 +14,18 @@ import type { Project } from "../types/projects";
 
 // Backend address only. GPT credentials are stored exclusively in backend/.env.ai.
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8001/api";
+  import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:8001/api`;
 const part = encodeURIComponent;
+
+export type Account = { user_id: string; username: string; display_name: string };
+let activeAccountId: string | null = null;
+const pendingRequests = new Set<AbortController>();
+
+export function setApiAccount(userId: string | null) {
+  if (activeAccountId === userId) return;
+  activeAccountId = userId;
+  for (const controller of pendingRequests) controller.abort();
+}
 
 export class ApiError extends Error {
   constructor(
@@ -64,17 +74,30 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const accountId = activeAccountId;
+  const isAuth = endpoint.startsWith("/auth/");
+  if (!accountId && !isAuth && endpoint !== "/health") {
+    throw new ApiError("请先登录。", 401, "authentication_required");
+  }
   const controller = new AbortController();
+  pendingRequests.add(controller);
   // Backend allows a 300s AI timeout plus a 15s database lock wait.
   const timeout = window.setTimeout(() => controller.abort(), 330000);
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
-      headers: { "Content-Type": "application/json", ...options.headers },
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "FlashTrain",
+        ...(accountId ? { "X-Account-ID": accountId } : {}), ...options.headers },
       signal: controller.signal,
     });
     const body = await response.json().catch(() => null);
+    if (!isAuth && accountId !== activeAccountId) {
+      throw new ApiError("账号状态已变化，请重新进入。", 401, "account_changed");
+    }
     if (!response.ok) {
+      if (response.status === 401 && (!isAuth || endpoint === "/auth/logout")) window.dispatchEvent(new Event("auth:expired"));
       const detail =
         typeof body?.detail === "string"
           ? body.detail
@@ -94,6 +117,7 @@ async function request<T>(
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (accountId !== activeAccountId) throw new ApiError("账号状态已变化，请重新进入。", 401, "account_changed");
       throw new ApiError(
         "等待响应超时，你的回答已保留，可以重试。",
         0,
@@ -106,6 +130,7 @@ async function request<T>(
       "network_error",
     );
   } finally {
+    pendingRequests.delete(controller);
     window.clearTimeout(timeout);
   }
 }
@@ -115,6 +140,14 @@ function post<T>(endpoint: string, value: unknown) {
 }
 
 export const systemApi = { health: () => request<Health>("/health") };
+
+export const authApi = {
+  me: () => request<Account>("/auth/me"),
+  login: (username: string, password: string) => post<Account>("/auth/login", { username, password }),
+  register: (username: string, password: string, displayName: string) =>
+    post<Account>("/auth/register", { username, password, display_name: displayName }),
+  logout: () => post<{ message: string }>("/auth/logout", {}),
+};
 
 export const projectApi = {
   list: () => request<{ projects: Project[] }>("/v3/projects"),
@@ -141,32 +174,29 @@ export const skillsApi = {
 };
 
 export const practiceApi = {
-  getRecords: (userId: string) =>
-    request<{ records: PracticeRecord[] }>(`/practice/records/${part(userId)}`),
-  deleteRecord: (recordId: string, userId = "default_user") =>
+  getRecords: () =>
+    request<{ records: PracticeRecord[] }>("/practice/records"),
+  deleteRecord: (recordId: string) =>
     request<{ message: string }>(
-      `/practice/record/${part(recordId)}?user_id=${part(userId)}`,
+      `/practice/record/${part(recordId)}`,
       { method: "DELETE" },
     ),
 };
 
 export const practiceV1Api = {
-  getSession: (userId: string, sessionId: string) =>
+  getSession: (sessionId: string) =>
     request<Envelope<SessionData>>(
-      `/v1/practice/sessions/${part(sessionId)}?user_id=${part(userId)}`,
+      `/v1/practice/sessions/${part(sessionId)}`,
     ),
   startPractice: (
-    userId: string,
     skillId: string,
     params: Record<string, unknown> = {},
   ) =>
     post<Envelope<SessionData>>("/v1/practice/start", {
-      user_id: userId,
       skill_id: skillId,
       params,
     }),
   submitAnswer: (
-    userId: string,
     sessionId: string,
     answer: string,
     assistanceUsed = false,
@@ -179,7 +209,6 @@ export const practiceV1Api = {
         status: string;
       }>
     >("/v1/practice/submit", {
-      user_id: userId,
       session_id: sessionId,
       answer,
       assistance_used: assistanceUsed,
@@ -189,27 +218,26 @@ export const practiceV1Api = {
 
 export const careerApi = {
   graph: () => request<GraphData>("/v2/graph"),
-  evidence: (userId = "default_user") =>
-    request<EvidenceData>(`/v2/evidence/${part(userId)}`),
-  recommendations: (userId = "default_user") =>
+  evidence: () =>
+    request<EvidenceData>("/v2/evidence"),
+  recommendations: () =>
     request<{ recommendations: Recommendation[] }>(
-      `/v2/recommendations/${part(userId)}`,
+      "/v2/recommendations",
     ),
 };
 
 export const bridgeApi = {
   catalog: () => request<Envelope<BridgeCatalog>>("/v2/bridge/catalog"),
-  session: (sessionId: string, userId = "default_user") =>
+  session: (sessionId: string) =>
     request<Envelope<BridgeSession>>(
-      `/v2/bridge/sessions/${part(sessionId)}?user_id=${part(userId)}`,
+      `/v2/bridge/sessions/${part(sessionId)}`,
     ),
   diagnose: (
     sessionId: string,
     answers: Record<string, string>,
-    userId = "default_user",
   ) =>
     post<Envelope<BridgeSession>>(
       `/v2/bridge/sessions/${part(sessionId)}/diagnosis`,
-      { user_id: userId, answers },
+      { answers },
     ),
 };

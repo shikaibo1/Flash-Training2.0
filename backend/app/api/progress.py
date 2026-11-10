@@ -19,8 +19,8 @@ router = APIRouter(prefix="/api/v1", tags=["learning-progress-retired"])
 def retired_progress():
     raise AppError(
         "v1 全局得分、掌握度、预测、自评与优化接口已停用，不能用于职业行动证据。"
-        "请使用 /api/v2/evidence/{user_id} 查看场景证据，"
-        "使用 /api/v2/recommendations/{user_id} 获取练习建议。",
+        "请登录后使用 /api/v2/evidence 查看场景证据，"
+        "使用 /api/v2/recommendations 获取练习建议。",
         410,
         "global_progress_retired",
     )

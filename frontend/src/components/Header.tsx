@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useAccount } from "../hooks/useAccount";
 import {
   ArrowUpRight,
   BookOpen,
@@ -13,6 +14,7 @@ import {
   Search,
   Shapes,
   Sprout,
+  LogOut,
 } from "lucide-react";
 
 const navigation = [
@@ -27,6 +29,7 @@ const navigation = [
 ];
 
 export default function Header() {
+  const { account, logout } = useAccount();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -110,10 +113,10 @@ export default function Header() {
             </Link>
           </div>
           <Link to="/profile" className="sidebar-profile">
-            <span className="avatar">学</span>
+            <span className="avatar">{account.display_name.slice(0, 1)}</span>
             <span>
-              <strong>本地学习者</strong>
-              <small>我的学习空间</small>
+              <strong>{account.display_name}</strong>
+              <small>@{account.username}</small>
             </span>
             <ChevronRight size={15} />
           </Link>
@@ -146,8 +149,9 @@ export default function Header() {
             className="avatar header-avatar"
             aria-label="打开个人中心"
           >
-            学
+            {account.display_name.slice(0, 1)}
           </Link>
+          <button className="account-logout" type="button" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={17} /><span>退出</span></button>
         </div>
       </header>
       <nav className="mobile-navigation" aria-label="移动端导航">

@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { practiceApi } from "../lib/api";
 import { parseTimestamp } from "../lib/stats";
+import { useAccount } from "./useAccount";
 
 export function usePracticeRecords() {
+  const { account } = useAccount();
   const client = useQueryClient();
   const query = useQuery({
-    queryKey: ["practice-records"],
-    queryFn: () => practiceApi.getRecords("default_user"),
+    queryKey: ["practice-records", account.user_id],
+    queryFn: () => practiceApi.getRecords(),
     staleTime: 30000,
     retry: 1,
   });

@@ -16,6 +16,7 @@ class Settings:
     ai_model: str = ""
     ai_api_style: str = "responses"
     ai_timeout: float = 60.0
+    auth_cookie_secure: bool = False
     cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
 
     @classmethod
@@ -36,6 +37,7 @@ class Settings:
                    ai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
                    ai_model=os.getenv("OPENAI_MODEL", ""), ai_api_style=style,
                    ai_timeout=timeout,
+                   auth_cookie_secure=os.getenv("FLASH_AUTH_COOKIE_SECURE", "false").lower() == "true",
                    cors_origins=tuple(x.strip() for x in os.getenv(
                        "FLASH_CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173"
                    ).split(",") if x.strip()))

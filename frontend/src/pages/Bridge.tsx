@@ -70,7 +70,7 @@ export default function Bridge() {
           setError(err instanceof Error ? err.message : "训练路径读取失败");
       });
     practiceApi
-      .getRecords("default_user")
+      .getRecords()
       .then((result) => {
         if (active) {
           setBaselines(

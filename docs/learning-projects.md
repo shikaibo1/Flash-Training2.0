@@ -21,7 +21,7 @@
 - 核对原子ID、状态一致性及逐字引用。模型返回无效依据时拒绝写入判断，保留已有进度，不伪造评分。
 - 独立初次回答、新题复测、追问和声明使用帮助的表现分别记录。追问后补齐的证据不会直接变成独立复测通过。
 - 不输出掌握概率，不把新诊断强行转换为0到10分。跨情境迁移仍需额外独立取证，不由本次通过自动推断。
-- 本版为本地单用户应用，`user_id` 只作数据划分，不是身份认证。不可直接作为已具备账号隔离的公开服务部署。
+- 学习项目接口需要登录，服务端从会话取得 `user_id`，请求体不接受用户身份字段；不同账号的项目、草稿和原子观察分别保存。目录定义仍由所有账号共享。
 
 内置数据及帮助由开发者编写、计算可核验，**尚未经教师或真实用户验证**。模型的语义判断、追问价值仍需用人工标注案例评测；自动化测试使用可控模型替身，不能证明真实模型诊断准确率。
 
@@ -35,7 +35,7 @@
 - `domain/evidence_views.py` 与 `application/evidence.py`：把新观察与已有单次练习证据汇总，不覆盖旧历史。
 - 前端 `Projects.tsx`、`ProjectWorkspace.tsx`：目标入口和工作台；服务端自动保存草稿，浏览器保存即时刷新的恢复副本。并发版本冲突会拒绝覆盖。
 
-数据库由schema v2或两种历史v3增量升级为v4，**目录版本仍为v2，文件名保持原样**。保留或补齐 `learning_projects`、`project_operations`、`project_observations` 与 `bridge_diagnoses`，保留学习记录和项目快照；目录启动逻辑会为未自定义的原始原子补充已编写的条件字段；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
+数据库由schema v2、两种历史v3或v4增量升级为v5，**目录版本仍为v2，文件名保持原样**。保留或补齐 `learning_projects`、`project_operations`、`project_observations` 与 `bridge_diagnoses`，新增账号和登录会话表，保留学习记录和项目快照；目录启动逻辑会为未自定义的原始原子补充已编写的条件字段；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
 
 AI配置沿用 `backend/.env.ai`，前端没有密钥。修改诊断提示词在 `application/project_coach.py`，底层API适配仍在 `infrastructure/ai.py`。
 

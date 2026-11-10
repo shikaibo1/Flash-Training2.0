@@ -10,24 +10,11 @@ import {
   SectionHeading,
 } from "../components/workspace/Primitives";
 import { Search, ArrowUpRight } from "lucide-react";
-const labels = {
-  role: "职业",
-  task: "任务",
-  atom: "原子能力",
-  knowledge: "课程知识",
-};
-const colors = {
-  role: "#526e60",
-  task: "#6c8caa",
-  atom: "#46846b",
-  knowledge: "#b8955e",
-};
-const relations = {
-  requires: "需要",
-  supports: "支撑",
-  prerequisite: "前置",
-  contains: "包含",
-};
+import KnowledgeGraphCanvas from "../components/KnowledgeGraphCanvas";
+import { graphNodeStyles, graphRelationLabels } from "../lib/graphLayout";
+const labels = Object.fromEntries(Object.entries(graphNodeStyles).map(([key, style]) => [key, style.label]));
+const colors = Object.fromEntries(Object.entries(graphNodeStyles).map(([key, style]) => [key, style.color]));
+const relations = graphRelationLabels;
 export default function KnowledgeGraph() {
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [evidence, setEvidence] = useState<EvidenceData | null>(null);
@@ -64,7 +51,7 @@ export default function KnowledgeGraph() {
     };
   }, [revision]);
 
-  const filtered = useMemo(() => {
+  const scopedNodes = useMemo(() => {
     if (!graph) return [];
     let allowed: Set<string> | null = null;
 
@@ -107,61 +94,30 @@ export default function KnowledgeGraph() {
         : courseAllowed;
     }
 
-    return graph.nodes.filter((node) => {
-      const matchesScope = !allowed || allowed.has(node.id);
-      const matchesType = !type || node.type === type;
-      const matchesQuery = `${node.label} ${node.description}`
-        .toLowerCase()
-        .includes(query.toLowerCase());
-      return matchesScope && matchesType && matchesQuery;
-    });
-  }, [graph, query, role, course, type]);
+    return graph.nodes.filter(node => !allowed || allowed.has(node.id));
+  }, [graph, role, course]);
 
-  // A focused neighborhood keeps the initial view readable; the list exposes all matches.
-  const selected =
-    graph?.nodes.find((node) => node.id === selectedId) ||
-    filtered.find((node) => node.type === "role") ||
-    filtered[0];
-  const neighborhood =
-    selected && graph
-      ? graph.edges.filter(
-          (edge) => edge.source === selected.id || edge.target === selected.id,
-        )
-      : [];
-  const visible =
-    selected && graph
-      ? [
-          selected,
-          ...graph.nodes.filter(
-            (node) =>
-              node.id !== selected.id &&
-              neighborhood.some(
-                (edge) => edge.source === node.id || edge.target === node.id,
-              ),
-          ),
-        ]
-      : [];
-  const visibleIds = new Set(visible.map((node) => node.id));
-  const edges =
-    graph?.edges.filter(
-      (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
-    ) || [];
-  const neighbors = visible.filter((node) => node.id !== selected?.id);
-  const left = neighbors.filter((_, index) => index % 2 === 0);
-  const right = neighbors.filter((_, index) => index % 2 !== 0);
-  const height = Math.max(320, Math.max(left.length, right.length) * 112 + 60);
-  const position = (id: string) => {
-    if (id === selected?.id) return { x: 440, y: height / 2 };
-    const leftIndex = left.findIndex((node) => node.id === id);
-    const group = leftIndex >= 0 ? left : right;
-    const index =
-      leftIndex >= 0 ? leftIndex : right.findIndex((node) => node.id === id);
-    return {
-      x: leftIndex >= 0 ? 145 : 735,
-      y: height / 2 + (index - (group.length - 1) / 2) * 112,
-    };
+  const filtered = useMemo(() => scopedNodes.filter(node =>
+    (!type || node.type === type) && `${node.label} ${node.description}`.toLowerCase().includes(query.trim().toLowerCase()),
+  ), [scopedNodes, type, query]);
+  const matchingIds = new Set(filtered.map(node => node.id));
+  // Keep direct context around search matches so filtering an atom does not erase its knowledge/task links.
+  const contextIds = new Set(matchingIds);
+  if (query.trim() || type) {
+    for (const edge of graph?.edges || []) {
+      if (matchingIds.has(edge.source)) contextIds.add(edge.target);
+      if (matchingIds.has(edge.target)) contextIds.add(edge.source);
+    }
+  }
+  const canvasNodes = scopedNodes.filter(node => contextIds.has(node.id));
+  const selected = scopedNodes.find(node => node.id === selectedId);
+  const neighborhood = selected && graph
+    ? graph.edges.filter(edge => edge.source === selected.id || edge.target === selected.id) : [];
+  const select = (node: GraphNode) => {
+    if (!scopedNodes.some(item => item.id === node.id)) { setRole(""); setCourse(""); }
+    if (!canvasNodes.some(item => item.id === node.id)) { setQuery(""); setType(""); }
+    setParams({ node: node.id });
   };
-  const select = (node: GraphNode) => setParams({ node: node.id });
   const atom = graph?.atoms.find(
     (item) =>
       selected?.type === "atom" &&
@@ -182,7 +138,7 @@ export default function KnowledgeGraph() {
       <PageHeading
         eyebrow="CAPABILITY MAP"
         title="看清知识与行动的连接"
-        description="从职业任务回到支撑它的知识。选择一个节点，探索直接关系、评分依据和练习入口。"
+        description="把职业、任务、行动与知识放在一张图里。拖动节点整理连接，点击节点回看条件、证据和练习入口。"
       />
       <div className="library-toolbar graph-toolbar">
         <div className="library-search">
@@ -280,141 +236,9 @@ export default function KnowledgeGraph() {
               </span>
             ))}
           </div>
-          <section className="graph-canvas" aria-label="可交互关系图">
-            <p className="p-2 text-sm text-muted-foreground">
-              {selected
-                ? `${selectedId ? "" : "当前概览："}${selected.label} 的直接关系（${visible.length} 个节点）；筛选列表含 ${filtered.length} 个匹配节点。`
-                : `筛选到 ${filtered.length} 个节点，概览显示前 ${visible.length} 个；下方列表包含全部匹配结果。`}
-            </p>
-            <svg
-              viewBox={`0 0 880 ${height}`}
-              style={{ minWidth: 620, width: "100%" }}
-              role="img"
-              aria-label="职业能力关系图，亦可使用下方节点列表"
-            >
-              <defs>
-                <marker
-                  id="graph-arrow"
-                  markerWidth="8"
-                  markerHeight="8"
-                  refX="7"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path d="M0,0 L8,4 L0,8" fill="#94a3b8" />
-                </marker>
-              </defs>
-              {edges.map((edge, index) => {
-                const start = position(edge.source);
-                const end = position(edge.target);
-                const dx = end.x - start.x;
-                const dy = end.y - start.y;
-                const boundaryRatio = Math.max(
-                  Math.abs(dx) / 126,
-                  Math.abs(dy) / 34,
-                );
-                const offsetX = dx / boundaryRatio;
-                const offsetY = dy / boundaryRatio;
-                return (
-                  <g key={`${edge.source}-${edge.target}-${index}`}>
-                    <line
-                      x1={start.x + offsetX}
-                      y1={start.y + offsetY}
-                      x2={end.x - offsetX}
-                      y2={end.y - offsetY}
-                      stroke="#b5c8bc"
-                      strokeWidth="1.5"
-                      markerEnd="url(#graph-arrow)"
-                    />
-                    <text
-                      x={(start.x + end.x) / 2}
-                      y={(start.y + end.y) / 2 - 8}
-                      textAnchor="middle"
-                      fill="#64748b"
-                      fontSize="11"
-                    >
-                      {relations[edge.relation]}
-                    </text>
-                  </g>
-                );
-              })}
-              {visible.map((node) => {
-                const point = position(node.id);
-                return (
-                  <g
-                    key={node.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`查看${labels[node.type]}：${node.label}`}
-                    onClick={() => select(node)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        select(node);
-                      }
-                    }}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <rect
-                      x={point.x - 120}
-                      y={point.y - 28}
-                      width="240"
-                      height="56"
-                      rx="12"
-                      fill={colors[node.type]}
-                      stroke={node.id === selected?.id ? "#c6d9c9" : "white"}
-                      strokeWidth="3"
-                    />
-                    <text
-                      x={point.x}
-                      y={point.y - 5}
-                      textAnchor="middle"
-                      fill="white"
-                      fontSize="11"
-                    >
-                      {labels[node.type]}
-                    </text>
-                    <text
-                      x={point.x}
-                      y={point.y + 14}
-                      textAnchor="middle"
-                      fill="white"
-                      fontSize="13"
-                    >
-                      {node.label.length > 17
-                        ? `${node.label.slice(0, 16)}…`
-                        : node.label}
-                    </text>
-                    {node.type === "atom" && (
-                      <text
-                        x={point.x}
-                        y={point.y + 43}
-                        textAnchor="middle"
-                        fill="#475569"
-                        fontSize="11"
-                      >
-                        {!evidence
-                          ? evidenceError
-                            ? "证据不可用"
-                            : "读取证据中"
-                          : evidence.atomic_skills
-                                .find(
-                                  (item) =>
-                                    item.atomic_skill_id === node.reference_id,
-                                )
-                                ?.contexts.some(
-                                  (item) => item.status !== "unmeasured",
-                                )
-                            ? "已有情境证据 · 点击查看"
-                            : "尚未测量"}
-                      </text>
-                    )}
-                    <title>{node.label}</title>
-                  </g>
-                );
-              })}
-            </svg>
-          </section>
+          <KnowledgeGraphCanvas graph={graph} nodes={canvasNodes} matchingIds={matchingIds}
+            selectedId={selected?.id} evidence={evidence} onSelect={select} />
+          {(query.trim() || type) && <p className="network-search-note">匹配 {filtered.length} 个节点，同时保留其直接关联节点作为上下文；职业与课程范围仍按筛选限制。</p>}
           <div className="graph-details-layout">
             <section className="panel graph-node-panel">
               <SectionHeading title={`全部匹配节点 · ${filtered.length}`} />
@@ -424,7 +248,7 @@ export default function KnowledgeGraph() {
                   <button
                     key={node.id}
                     onClick={() => select(node)}
-                    aria-pressed={node.id === selectedId}
+                    aria-pressed={node.id === selected?.id}
                     className={`graph-list-node ${node.id === selected?.id ? "selected" : ""}`}
                   >
                     <span
@@ -440,6 +264,7 @@ export default function KnowledgeGraph() {
               </div>
             </section>
             <section
+              id="graph-node-details"
               className="panel graph-detail-panel space-y-4"
               aria-live="polite"
             >
@@ -625,7 +450,7 @@ export default function KnowledgeGraph() {
                   )}
                 </>
               ) : (
-                <p>选择节点查看定义、关系和练习入口。</p>
+                <div className="network-detail-empty"><span>从一个连接开始</span><h2>点击图中的节点</h2><p>查看它的适用条件、前置能力与原始作答证据，再决定下一步练什么。拖动仅调整布局，不改变知识关系。</p></div>
               )}
             </section>
           </div>

@@ -17,11 +17,10 @@ class GenerateRequest(RequestModel):
 
 
 class StartRequest(GenerateRequest):
-    user_id: Identifier
+    """The authenticated account is supplied by the API, never the request body."""
 
 
 class SubmitRequest(RequestModel):
-    user_id: Identifier
     session_id: Identifier
     answer: str = Field(min_length=1, max_length=50000)
     assistance_used: bool = Field(default=False, strict=True)

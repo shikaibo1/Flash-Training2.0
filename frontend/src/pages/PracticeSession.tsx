@@ -17,7 +17,7 @@ import type {
   AgentTrace,
 } from "../types";
 
-const userId = "default_user";
+import { useAccount } from "../hooks/useAccount";
 type Feedback = {
   score: number;
   strengths: string[];
@@ -30,6 +30,7 @@ type Session = SessionData;
 const pendingSessions = new Map<string, Promise<Session>>();
 
 function practiceCacheKey(
+  userId: string,
   skillId: string,
   mode: string,
   targetKey: string,
@@ -43,6 +44,7 @@ function practiceCacheKey(
 }
 
 function cacheKeyForSession(
+  userId: string,
   session: Session,
   mode: string,
   targetKey: string,
@@ -61,6 +63,7 @@ function cacheKeyForSession(
         .join(",")
     : targetKey;
   return practiceCacheKey(
+    userId,
     session.skill_id,
     session.mode || mode,
     atoms,
@@ -70,6 +73,7 @@ function cacheKeyForSession(
 }
 
 function forgetCachedSession(
+  userId: string,
   session: Session,
   mode: string,
   targetKey: string,
@@ -78,19 +82,21 @@ function forgetCachedSession(
 ) {
   const keys = [
     practiceCacheKey(
+      userId,
       session.skill_id,
       mode,
       targetKey,
       bridgeCaseId,
       sourceSessionId,
     ),
-    cacheKeyForSession(session, mode, targetKey, bridgeCaseId, sourceSessionId),
+    cacheKeyForSession(userId, session, mode, targetKey, bridgeCaseId, sourceSessionId),
   ];
   for (const key of keys)
     if (sessionCache.read(key) === session.session_id) sessionCache.remove(key);
 }
 
 async function obtainSession(
+  userId: string,
   skillId: string,
   mode: string,
   targetIds: string[],
@@ -98,6 +104,7 @@ async function obtainSession(
   sourceSessionId: string,
 ): Promise<Session> {
   const key = practiceCacheKey(
+    userId,
     skillId,
     mode,
     targetIds.join(","),
@@ -110,7 +117,7 @@ async function obtainSession(
     const saved = sessionCache.read(key);
     if (saved) {
       try {
-        const result = await practiceV1Api.getSession(userId, saved);
+        const result = await practiceV1Api.getSession(saved);
         if (result.data.status === "active" || result.data.evaluation_result)
           return result.data;
       } catch (error) {
@@ -124,7 +131,7 @@ async function obtainSession(
       }
       sessionCache.remove(key);
     }
-    const result = await practiceV1Api.startPractice(userId, skillId, {
+    const result = await practiceV1Api.startPractice(skillId, {
       mode,
       ...(targetIds.length ? { target_atomic_ids: targetIds } : {}),
       ...(bridgeCaseId ? { bridge_case_id: bridgeCaseId } : {}),
@@ -142,6 +149,8 @@ async function obtainSession(
 }
 
 const PracticeSession = () => {
+  const { account } = useAccount();
+  const userId = account.user_id;
   const queryClient = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -176,11 +185,13 @@ const PracticeSession = () => {
   const mounted = useRef(false);
   const generation = useRef(0);
   const submitLock = useRef<string | null>(null);
-  const historyRecord = (
+  const savedHistoryRecord = (
     location.state as { fromHistory?: boolean; record?: PracticeRecord } | null
   )?.fromHistory
     ? (location.state as { record: PracticeRecord }).record
     : null;
+
+  const historyRecord = savedHistoryRecord?.user_id === userId ? savedHistoryRecord : null;
 
   const displayMode = session?.mode || historyRecord?.mode || mode;
 
@@ -229,7 +240,7 @@ const PracticeSession = () => {
         if (historyRecord.session_id) {
           try {
             const saved = (
-              await practiceV1Api.getSession(userId, historyRecord.session_id)
+              await practiceV1Api.getSession(historyRecord.session_id)
             ).data;
             if (!active) return;
             setSession(saved);
@@ -254,7 +265,7 @@ const PracticeSession = () => {
       try {
         let value: Session;
         if (requestedSessionId) {
-          value = (await practiceV1Api.getSession(userId, requestedSessionId))
+          value = (await practiceV1Api.getSession(requestedSessionId))
             .data;
         } else {
           let skillId = id;
@@ -273,6 +284,7 @@ const PracticeSession = () => {
           }
           if (!active) return;
           value = await obtainSession(
+            userId,
             skillId,
             mode,
             targetKey ? targetKey.split(",") : [],
@@ -293,7 +305,7 @@ const PracticeSession = () => {
         if (active) {
           setSession(value);
           setAssisted(
-            sessionCache.read(`flash-assisted:${value.session_id}`) === "true",
+            sessionCache.read(`flash-assisted:${userId}:${value.session_id}`) === "true",
           );
           setTrace([
             ...(value.agent_trace || value.content.agent_trace || []),
@@ -316,7 +328,7 @@ const PracticeSession = () => {
             });
           } else {
             setAnswer(
-              sessionCache.read(`flash-draft:${value.session_id}`) || "",
+              sessionCache.read(`flash-draft:${userId}:${value.session_id}`) || "",
             );
           }
         }
@@ -333,6 +345,7 @@ const PracticeSession = () => {
       mounted.current = false;
     };
   }, [
+    userId,
     id,
     historyRecord,
     revision,
@@ -355,20 +368,20 @@ const PracticeSession = () => {
     setError("");
     try {
       const result = await practiceV1Api.submitAnswer(
-        userId,
         session.session_id,
         answer,
         assisted,
       );
       const evaluation = result.data.evaluation_result;
       forgetCachedSession(
+        userId,
         session,
         mode,
         targetKey,
         bridgeCaseId,
         sourceSessionId,
       );
-      sessionCache.remove(`flash-draft:${session.session_id}`);
+      sessionCache.remove(`flash-draft:${userId}:${session.session_id}`);
       window.dispatchEvent(
         new CustomEvent("practice:record-saved", {
           detail: { recordId: result.data.record_id },
@@ -400,7 +413,7 @@ const PracticeSession = () => {
         if (displayMode !== "guided") {
           try {
             const completed = (
-              await practiceV1Api.getSession(userId, requestSessionId)
+              await practiceV1Api.getSession(requestSessionId)
             ).data;
             if (mounted.current && generation.current === requestGeneration)
               setContent(completed.content);
@@ -427,7 +440,7 @@ const PracticeSession = () => {
     setAssisted(true);
     if (
       session &&
-      !sessionCache.write(`flash-assisted:${session.session_id}`, "true")
+      !sessionCache.write(`flash-assisted:${userId}:${session.session_id}`, "true")
     )
       setDraftNotice(
         "辅助使用标记无法保存；本次提交仍会记录，刷新前请先完成提交。",
@@ -437,6 +450,7 @@ const PracticeSession = () => {
   const startAgain = () => {
     if (session)
       forgetCachedSession(
+        userId,
         session,
         mode,
         targetKey,
@@ -705,7 +719,7 @@ const PracticeSession = () => {
                             setAssisted(value);
                             if (session)
                               sessionCache.write(
-                                `flash-assisted:${session.session_id}`,
+                                `flash-assisted:${userId}:${session.session_id}`,
                                 String(value),
                               );
                           }}
@@ -727,7 +741,7 @@ const PracticeSession = () => {
                         if (
                           session &&
                           !sessionCache.write(
-                            `flash-draft:${session.session_id}`,
+                            `flash-draft:${userId}:${session.session_id}`,
                             e.target.value,
                           )
                         ) {

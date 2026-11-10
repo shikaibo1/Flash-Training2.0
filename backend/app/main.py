@@ -12,7 +12,7 @@ from .infrastructure.ai import OpenAIJSONClient
 from .bootstrap import build_services
 from .api.responses import ErrorResponse, HealthResponse
 from .errors import AppError
-from .api import skills, practice, progress, graph, evidence, projects, bridge
+from .api import skills, practice, progress, graph, evidence, projects, bridge, auth
 
 
 def create_app(settings=None, ai=None):
@@ -27,11 +27,19 @@ def create_app(settings=None, ai=None):
         app.state.services = build_services(SQLiteUnitOfWorkFactory(database), app.state.ai)
         yield
 
-    errors = {status: {"model": ErrorResponse} for status in (404, 409, 410, 502, 503)}
+    errors = {status: {"model": ErrorResponse} for status in (401, 403, 404, 409, 410, 429, 502, 503)}
     app = FastAPI(title="Flash Training Career Lab", version="3.0.0", lifespan=lifespan, responses=errors)
+    app.state.settings = settings
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
-                       allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "DELETE"],
-                       allow_headers=["Content-Type"])
+                       allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "DELETE"],
+                       allow_headers=["Content-Type", "X-Requested-With", "X-Account-ID"])
+
+    @app.middleware("http")
+    async def private_responses(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.exception_handler(AppError)
     async def app_error(request, exc):
@@ -57,6 +65,7 @@ def create_app(settings=None, ai=None):
                               ai_api_style=settings.ai_api_style, ai_model=settings.ai_model)
 
     app.include_router(skills.router)
+    app.include_router(auth.router)
     app.include_router(practice.router)
     app.include_router(progress.router)
     app.include_router(graph.router)

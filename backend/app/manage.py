@@ -3,7 +3,7 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
-from .infrastructure.database import Database
+from .infrastructure.database import Database, SCHEMA_VERSION
 from .infrastructure.catalog_seed import seed_catalog
 from .settings import Settings
 
@@ -11,7 +11,7 @@ from .settings import Settings
 def main():
     parser = argparse.ArgumentParser(description="Flash Training SQLite management")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("migrate", help="Initialize schema v4 or back up and upgrade v2/v3; seed catalog once")
+    commands.add_parser("migrate", help="Initialize schema v5 or back up and upgrade v2/v3/v4; seed catalog once")
     commands.add_parser("inspect", help="Show schema version and row counts")
     backup = commands.add_parser("backup", help="Create a consistent SQLite backup (also works while server runs)")
     backup.add_argument("destination", type=Path)
@@ -21,7 +21,7 @@ def main():
     if args.command == "migrate":
         db.initialize()
         seed_catalog(db, settings.catalog_path)
-        print("Database schema v4 and career catalog v2 are ready.")
+        print(f"Database schema v{SCHEMA_VERSION} and career catalog v2 are ready.")
         return
     if not db.path.exists():
         parser.error("Database does not exist. Run migrate first.")

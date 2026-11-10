@@ -2,6 +2,7 @@ import { BookOpen, CheckCheck, Clock3, GitBranch, Sprout } from "lucide-react";
 import { Link } from "react-router-dom";
 import { calculateStats, durationLabel } from "../lib/stats";
 import { usePracticeRecords } from "../hooks/usePracticeRecords";
+import { useAccount } from "../hooks/useAccount";
 import { RecordList } from "../components/workspace/RecordList";
 import {
   EmptyState,
@@ -14,6 +15,7 @@ import {
 } from "../components/workspace/Primitives";
 
 export default function Profile() {
+  const { account } = useAccount();
   const records = usePracticeRecords();
   const stats = calculateStats(records.records);
   return (
@@ -24,11 +26,11 @@ export default function Profile() {
         description="从已完成的练习回看学习过程。每次独立思考，都是下一次行动的基础。"
       />
       <section className="profile-banner">
-        <span className="profile-avatar">学</span>
+        <span className="profile-avatar">{account.display_name.slice(0, 1)}</span>
         <div>
           <span className="small-label">我的学习空间</span>
-          <h2>本地学习者</h2>
-          <p>记录尝试，连接知识，发现下一步。</p>
+          <h2>{account.display_name}</h2>
+          <p>@{account.username} · 记录尝试，连接知识，发现下一步。</p>
         </div>
         <span className="profile-streak">
           <Sprout size={17} />

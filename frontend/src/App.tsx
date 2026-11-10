@@ -6,8 +6,9 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Header from "./components/Header";
+import AccountGate from "./components/AccountGate";
 
 const KnowledgeGraph = lazy(() => import("./pages/KnowledgeGraph"));
 const Home = lazy(() => import("./pages/Home"));
@@ -19,8 +20,6 @@ const LearningCurve = lazy(() => import("./pages/LearningCurve"));
 const Bridge = lazy(() => import("./pages/Bridge"));
 const Projects = lazy(() => import("./pages/Projects"));
 const ProjectWorkspace = lazy(() => import("./pages/ProjectWorkspace"));
-
-const queryClient = new QueryClient();
 
 function RoutePosition() {
   const { pathname } = useLocation();
@@ -35,7 +34,9 @@ function ProjectRoute() {
   return <ProjectWorkspace key={id} />;
 }
 
-const App = () => (
+const Workspace = () => {
+  const [queryClient] = useState(() => new QueryClient());
+  return (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <div className="app-shell">
@@ -84,6 +85,9 @@ const App = () => (
       </div>
     </BrowserRouter>
   </QueryClientProvider>
-);
+  );
+};
+
+const App = () => <AccountGate><Workspace /></AccountGate>;
 
 export default App;

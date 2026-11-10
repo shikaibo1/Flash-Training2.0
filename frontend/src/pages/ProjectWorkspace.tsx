@@ -8,6 +8,7 @@ import {
   Target,
 } from "lucide-react";
 import { ApiError, projectApi, skillsApi } from "../lib/api";
+import { useAccount } from "../hooks/useAccount";
 import type { Skill } from "../types";
 import type { Project } from "../types/projects";
 import { findingLabels, projectStatus, SQL_TASK } from "../types/projects";
@@ -19,6 +20,7 @@ import {
 } from "../components/workspace/Primitives";
 
 export default function ProjectWorkspace() {
+  const { account } = useAccount();
   const { id = "" } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const current = useRef<Project | null>(null);
@@ -51,7 +53,7 @@ export default function ProjectWorkspace() {
       try {
         const cache = JSON.parse(
           localStorage.getItem(
-            `project-draft:${p.project_id}:${r?.round_id}`,
+            `project-draft:${account.user_id}:${p.project_id}:${r?.round_id}`,
           ) || "null",
         );
         if (
@@ -86,7 +88,7 @@ export default function ProjectWorkspace() {
     if (p && r) {
       try {
         localStorage.setItem(
-          `project-draft:${p.project_id}:${r.round_id}`,
+          `project-draft:${account.user_id}:${p.project_id}:${r.round_id}`,
           JSON.stringify({ text, number, help, revision: p.revision }),
         );
       } catch {
