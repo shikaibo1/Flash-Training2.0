@@ -7,6 +7,8 @@ from .application.progress import ProgressService
 from .application.records import RecordService
 from .application.graph import GraphService
 from .application.evidence import EvidenceService
+from .application.projects import ProjectService
+from .application.project_coach import ProjectCoach
 from .domain.ports import JSONClient, UnitOfWorkFactory
 
 
@@ -18,9 +20,11 @@ class Services:
     records: RecordService
     graph: GraphService
     evidence: EvidenceService
+    projects: ProjectService
 
 
 def build_services(work: UnitOfWorkFactory, client: JSONClient) -> Services:
     content = ContentService(client)
     return Services(SkillService(work, content), PracticeService(work, content),
-                    ProgressService(work), RecordService(work), GraphService(work), EvidenceService(work))
+                    ProgressService(work), RecordService(work), GraphService(work), EvidenceService(work),
+                    ProjectService(work, content, ProjectCoach(client)))

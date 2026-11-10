@@ -74,7 +74,7 @@ class EvidenceRecord(AtomEvidence):
 
 class ContextEvidence(Model):
     context: str
-    status: Literal["unmeasured", "developing", "assisted", "independent"]
+    status: Literal["unmeasured", "developing", "assisted", "independent", "uncertain"]
     evidence_count: int = 0
     independent_count: int = 0
     last_score: Score10 | None = None
@@ -86,11 +86,6 @@ class AtomicEvidenceSummary(Model):
     name: str
     contexts: list[ContextEvidence]
     transfer_observed: bool = False
-
-
-class EvidenceDashboard(Model):
-    atomic_skills: list[AtomicEvidenceSummary]
-    recent_evidence: list[EvidenceRecord]
 
 
 class LearningRecommendation(Model):

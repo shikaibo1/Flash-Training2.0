@@ -1,9 +1,11 @@
 """Context-specific evidence summaries and transparent, deterministic practice advice."""
 from ..domain.models import (
-    AgentStep, AtomicEvidenceSummary, AtomicSkill, ContextEvidence, EvidenceDashboard,
+    AgentStep, AtomicEvidenceSummary, AtomicSkill, ContextEvidence,
     EvidenceRecord, LearningRecommendation, LearningRecommendations, Skill,
 )
 from ..domain.ports import UnitOfWorkFactory
+from ..domain.projects import ProjectObservation
+from ..domain.evidence_views import EvidenceDashboard
 
 
 def _independent_success(record: EvidenceRecord) -> bool:
@@ -11,11 +13,12 @@ def _independent_success(record: EvidenceRecord) -> bool:
             and record.mode in ("independent", "transfer") and not record.assistance_used)
 
 
-def _summarize(atoms: list[AtomicSkill], evidence: list[EvidenceRecord]) -> list[AtomicEvidenceSummary]:
+def _summarize(atoms: list[AtomicSkill], evidence: list[EvidenceRecord], project_observations: list[ProjectObservation] | None = None) -> list[AtomicEvidenceSummary]:
     summaries = []
     for atom in atoms:
         atom_records = [record for record in evidence if record.atomic_skill_id == atom.atomic_skill_id]
-        contexts = list(dict.fromkeys([*atom.contexts, *(record.context for record in atom_records)]))
+        project_records = [o for o in (project_observations or []) if o.atomic_skill_id == atom.atomic_skill_id]
+        contexts = list(dict.fromkeys([*atom.contexts, *(record.context for record in atom_records), *(o.context for o in project_records)]))
         context_summaries = []
         for context in contexts:
             observed = [record for record in atom_records if record.context == context and record.status == "observed"]
@@ -28,10 +31,19 @@ def _summarize(atoms: list[AtomicSkill], evidence: list[EvidenceRecord]) -> list
                     status = "assisted"
                 else:
                     status = "independent"
+            project_items = [o for o in project_records if o.context == context]
+            latest_project = project_items[0] if project_items else None
+            use_project = latest_project is not None and (latest is None or latest_project.created_at >= latest.created_at)
+            if use_project:
+                state = latest_project.finding.state
+                status = ("uncertain" if state == "uncertain" else "developing" if state == "gap" else
+                    "assisted" if latest_project.stage == "probe" or latest_project.assistance_used else "independent")
             context_summaries.append(ContextEvidence(
-                context=context, status=status, evidence_count=len(observed),
-                independent_count=sum(_independent_success(record) for record in observed),
-                last_score=latest.score if latest else None, last_practice_time=latest.created_at if latest else None))
+                context=context, status=status, evidence_count=len(observed) + len(project_items),
+                independent_count=sum(_independent_success(record) for record in observed) + sum(o.finding.state == "supported" and o.stage != "probe" and not o.assistance_used for o in project_items),
+                last_score=latest.score if latest and not use_project else None,
+                last_practice_time=latest_project.created_at if use_project else latest.created_at if latest else None,
+            ))
         successful = [record for record in atom_records if _independent_success(record)]
         transfer = len({record.context for record in successful}) >= 2 and any(record.mode == "transfer" for record in successful)
         summaries.append(AtomicEvidenceSummary(atomic_skill_id=atom.atomic_skill_id, name=atom.name,
@@ -44,7 +56,7 @@ def _context_state(summary: AtomicEvidenceSummary, context: str) -> ContextEvide
 
 
 def _priority(state: ContextEvidence) -> tuple[int, float, str]:
-    category = {"unmeasured": 1, "developing": 2, "assisted": 3, "independent": 5}[state.status]
+    category = {"unmeasured": 1, "uncertain": 1, "developing": 2, "assisted": 3, "independent": 5}[state.status]
     # Missing evidence is represented by its own category, never a fictitious zero score.
     return category, state.last_score if state.last_score is not None else 10.0, state.last_practice_time or ""
 
@@ -57,14 +69,17 @@ class EvidenceService:
         with self._work.read() as unit:
             atoms = unit.skills.atoms()
             evidence = unit.progress.evidence(user_id)
-        return EvidenceDashboard(atomic_skills=_summarize(atoms, evidence), recent_evidence=evidence[:100])
+            observations = unit.projects.observations(user_id)
+        return EvidenceDashboard(atomic_skills=_summarize(atoms, evidence, observations), recent_evidence=evidence[:100],
+            project_observations=observations[:100])
 
     def recommendations(self, user_id: str) -> LearningRecommendations:
         with self._work.read() as unit:
             atoms = unit.skills.atoms()
             evidence = unit.progress.evidence(user_id)
             tasks = unit.skills.list(enabled_only=True)
-        summaries = {summary.atomic_skill_id: summary for summary in _summarize(atoms, evidence)}
+            observations = unit.projects.observations(user_id)
+        summaries = {summary.atomic_skill_id: summary for summary in _summarize(atoms, evidence, observations)}
         atom_definitions = {atom.atomic_skill_id: atom for atom in atoms}
         candidates = {}
 
@@ -100,7 +115,7 @@ class EvidenceService:
                 continue
             state = _context_state(summaries[targets[0]], task.context)
             priority = _priority(state)
-            if state.status == "unmeasured":
+            if state.status in ("unmeasured", "uncertain"):
                 reason = f"「{task.context}」尚无可观察证据，先建立基线。"
                 source = next(((atom_id, context.context) for atom_id in targets
                     if _context_state(summaries[atom_id], task.context).status == "unmeasured"
@@ -111,7 +126,8 @@ class EvidenceService:
                     reason = (f"「{atom_definitions[atom_id].name}」在「{source_context}」已有独立达标证据，"
                               f"可在「{task.context}」选择迁移模式建立单独证据；不传播原情境分数。")
             elif state.status == "developing":
-                reason = f"优先练习本情境较弱项，最近可观察得分为 {state.last_score:g}/10。"
+                reason = (f"优先练习本情境较弱项，最近可观察得分为 {state.last_score:g}/10。" if state.last_score is not None
+                          else "本情境最近的诊断发现明确缺口，建议针对性帮助后再独立验证。")
             elif state.status == "assisted":
                 reason = "已在辅助下完成，建议收起提示后独立练习。"
             elif any(not summaries[atom_id].transfer_observed for atom_id in targets):

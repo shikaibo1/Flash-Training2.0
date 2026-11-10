@@ -1,10 +1,13 @@
 """SQLite schema and connection lifecycle; writes use explicit transactions."""
 from __future__ import annotations
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from pathlib import Path
+from datetime import datetime, timezone
+from uuid import uuid4
+from .project_migration import PROJECT_SCHEMA
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE users (user_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
 CREATE TABLE atomic_skills (
@@ -91,17 +94,28 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = self.connect()
         try:
+            # Snapshot before applying the first schema change; backup is outside the write lock.
+            if conn.execute("PRAGMA user_version").fetchone()[0] == 2:
+                backup_dir = self.path.parent / "backups"
+                backup_dir.mkdir(exist_ok=True)
+                backup_path = backup_dir / ("before-v3-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8] + ".sqlite3")
+                with closing(sqlite3.connect(backup_path)) as destination:
+                    conn.backup(destination)
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("BEGIN IMMEDIATE")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise RuntimeError("Database schema is newer than this application")
-            if version not in (0, SCHEMA_VERSION):
+            if version not in (0, 2, SCHEMA_VERSION):
                 raise RuntimeError("This application requires a fresh schema v2 database; select a new database path. Existing data was not modified.")
             if version == 0:
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").fetchone():
                     raise RuntimeError("The selected database is not an empty schema v2 database; select a new database path.")
                 for statement in SCHEMA.split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+            if version in (0, 2):
+                for statement in PROJECT_SCHEMA.split(";"):
                     if statement.strip():
                         conn.execute(statement)
                 conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")

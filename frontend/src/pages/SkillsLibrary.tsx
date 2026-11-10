@@ -1,68 +1,224 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { careerApi } from '../lib/api';
-import type { GraphData } from '../types';
+import { useEffect, useMemo, useState } from "react";
+import { BookOpen, Filter, Layers3, Search, Sparkles } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { careerApi } from "../lib/api";
+import type { GraphData } from "../types";
+import {
+  EmptyState,
+  LoadingState,
+  Notice,
+  PageHeading,
+  TextLink,
+} from "../components/workspace/Primitives";
+
+const modes = [
+  ["guided", "引导"],
+  ["independent", "独立"],
+  ["transfer", "迁移"],
+] as const;
 export default function SkillsLibrary() {
   const [graph, setGraph] = useState<GraphData | null>(null);
-  const [query, setQuery] = useState('');
-  const [role, setRole] = useState('');
-  const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-
+  const [queryParams, setQueryParams] = useSearchParams();
+  const query = queryParams.get("q") || "";
+  const [role, setRole] = useState("");
+  const [kind, setKind] = useState<"tasks" | "atoms">("tasks");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
-    careerApi.graph()
-      .then(value => { if (active) setGraph(value); })
-      .catch(error => { if (active) setError(error.message); });
-    return () => { active = false; };
-  }, [revision]);
-
-  const tasks = graph?.tasks.filter(task => {
-    const matchesRole = !role || task.role_id === role;
-    const searchableText = `${task.name} ${task.display_name} ${task.description} ${task.context}`;
-    return matchesRole && searchableText.toLowerCase().includes(query.toLowerCase());
-  });
-
-  return <div className="space-y-6">
-    <h1 className="text-3xl font-bold">职业任务库</h1>
-    <p className="text-muted-foreground">每个任务有明确交付物和原子能力。课程知识通过图谱关联到行动，而不是等同于能力。</p>
-    <div className="flex flex-wrap gap-3">
-      <input aria-label="搜索任务" className="border rounded-lg p-3 bg-card" placeholder="搜索任务、情境" value={query} onChange={e => setQuery(e.target.value)}/>
-        <select aria-label="职业筛选" className="border rounded-lg p-3 bg-card" value={role} onChange={e => setRole(e.target.value)}>
-          <option value="">全部职业</option>{graph?.roles.map(item =>
-          <option key={item.role_id} value={item.role_id}>{item.name}</option>)}
+    careerApi
+      .graph()
+      .then((value) => {
+        if (active) setGraph(value);
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const search = query.trim().toLowerCase();
+  const tasks = useMemo(
+    () =>
+      graph?.tasks.filter(
+        (task) =>
+          (!role || task.role_id === role) &&
+          `${task.name} ${task.display_name} ${task.description} ${task.context}`
+            .toLowerCase()
+            .includes(search),
+      ) || [],
+    [graph, role, search],
+  );
+  const atoms = useMemo(
+    () =>
+      graph?.atoms.filter(
+        (atom) =>
+          (!role ||
+            graph.tasks.some(
+              (task) =>
+                task.role_id === role &&
+                task.atomic_skills.includes(atom.atomic_skill_id),
+            )) &&
+          `${atom.name} ${atom.description} ${atom.action}`
+            .toLowerCase()
+            .includes(search),
+      ) || [],
+    [graph, role, search],
+  );
+  const updateQuery = (value: string) => {
+    const next = new URLSearchParams(queryParams);
+    if (value) next.set("q", value);
+    else next.delete("q");
+    setQueryParams(next, { replace: true });
+  };
+  return (
+    <div className="page-stack page-stack-wide">
+      <PageHeading
+        eyebrow="PRACTICE LIBRARY"
+        title="选择一个值得完成的任务"
+        description="从具体交付物开始练习。每个任务都会说明需要哪些行动能力，以及如何用引导、独立和迁移方式继续。"
+        action={<TextLink to="/graph">查看能力图谱</TextLink>}
+      />
+      <section className="library-toolbar">
+        <div className="library-search">
+          <Search size={17} />
+          <input
+            aria-label="搜索任务或能力"
+            placeholder="搜索任务、情境或原子能力"
+            value={query}
+            onChange={(event) => updateQuery(event.target.value)}
+          />
+        </div>
+        <select
+          aria-label="职业筛选"
+          value={role}
+          onChange={(event) => setRole(event.target.value)}
+        >
+          <option value="">全部职业</option>
+          {graph?.roles.map((item) => (
+            <option key={item.role_id} value={item.role_id}>
+              {item.name}
+            </option>
+          ))}
         </select>
-        <Link className="p-3 text-primary" to="/graph">查看能力关系图 →</Link>
-      </div>
-      {error &&
-      <div role="alert">{error}
-        <button className="text-primary" onClick={() => { setError(''); setRevision(v => v + 1); }}>重试</button>
-      </div>}{!graph && !error &&
-      <p role="status">加载任务定义…</p>}{tasks?.length === 0 &&
-      <p>没有匹配任务，试试其他关键词或职业。</p>}
-      <div className="grid lg:grid-cols-2 gap-5">{tasks?.map(task =>
-        <article key={task.skill_id} className="p-6 border rounded-xl bg-card space-y-4">
-          <p className="text-sm text-primary">{graph?.roles.find(item => item.role_id === task.role_id)?.name} · {task.context}</p>
-          <h2 className="text-xl font-semibold">{task.display_name || task.name}</h2>
-          <p>{task.task_brief || task.description}</p>
-          <p className="text-muted-foreground">交付物：{task.deliverable}</p>
-          <div className="flex flex-wrap gap-2">{task.atomic_skills.map(id =>
-            <Link key={id} className="text-sm rounded-full bg-secondary px-3 py-1" to={`/graph?node=${encodeURIComponent(`atom:${id}`)}`}>{graph?.atoms.find(atom => atom.atomic_skill_id === id)?.name || id}</Link>)}
-          </div>
-          <div className="flex flex-wrap gap-3">{(['guided','independent','transfer'] as const).map((mode, index) =>
-            <Link key={mode} className="text-primary border rounded-lg px-3 py-2" to={`/practice/${encodeURIComponent(task.skill_id)}?mode=${mode}`}>{['引导练习','独立练习','迁移练习'][index]}</Link>)}
-          </div>
-        </article>)}
-      </div>
-      <h2 className="text-2xl font-bold">原子能力定义</h2>
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{graph?.atoms.filter(atom => `${atom.name} ${atom.description}`.toLowerCase().includes(query.toLowerCase())).map(atom =>
-        <article key={atom.atomic_skill_id} className="border rounded-xl p-5 space-y-2 bg-card">
-          <Link className="font-semibold text-primary" to={`/graph?node=${encodeURIComponent(`atom:${atom.atomic_skill_id}`)}`}>{atom.name}</Link>
-          <p>{atom.action}</p>
-          <p className="text-sm text-muted-foreground">输入：{atom.input_spec}</p>
-          <p className="text-sm text-muted-foreground">输出：{atom.output_spec}</p>
-          <p className="text-sm">边界：{atom.boundary}</p>
-        </article>)}
-      </div>
-    </div>;
-    }
+        <div className="view-toggle">
+          <button
+            className={kind === "tasks" ? "active" : ""}
+            onClick={() => setKind("tasks")}
+          >
+            <BookOpen size={15} />
+            任务
+          </button>
+          <button
+            className={kind === "atoms" ? "active" : ""}
+            onClick={() => setKind("atoms")}
+          >
+            <Layers3 size={15} />
+            原子
+          </button>
+        </div>
+      </section>
+      {error && (
+        <Notice onRetry={() => window.location.reload()}>{error}</Notice>
+      )}
+      {loading && <LoadingState label="正在加载任务目录…" />}
+      {!loading && kind === "tasks" && (
+        <>
+          {!tasks.length ? (
+            <EmptyState
+              title="没有找到匹配任务"
+              description="换个关键词，或先浏览全部任务。"
+              icon={Filter}
+            />
+          ) : (
+            <div className="task-card-grid">
+              {tasks.map((task, index) => (
+                <article className="task-card" key={task.skill_id}>
+                  <div className="task-card-top">
+                    <span className="task-index">0{index + 1}</span>
+                    <span className="task-context">
+                      {
+                        graph?.roles.find(
+                          (item) => item.role_id === task.role_id,
+                        )?.name
+                      }{" "}
+                      · {task.context}
+                    </span>
+                  </div>
+                  <h2>{task.display_name || task.name}</h2>
+                  <p>{task.task_brief || task.description}</p>
+                  <div className="deliverable">
+                    <span>交付物</span>
+                    {task.deliverable}
+                  </div>
+                  <div className="atom-pills">
+                    {task.atomic_skills.map((id) => (
+                      <Link
+                        key={id}
+                        to={`/graph?node=${encodeURIComponent(`atom:${id}`)}`}
+                      >
+                        {graph?.atoms.find(
+                          (atom) => atom.atomic_skill_id === id,
+                        )?.name || id}
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="task-actions">
+                    {modes.map(([mode, label]) => (
+                      <Link
+                        key={mode}
+                        className={
+                          mode === "independent" ? "primary-action" : ""
+                        }
+                        to={`/practice/${encodeURIComponent(task.skill_id)}?mode=${mode}`}
+                      >
+                        {label}练习
+                      </Link>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {!loading && kind === "atoms" && (
+        <>
+          {!atoms.length ? (
+            <EmptyState
+              title="没有找到匹配能力"
+              description="尝试搜索“提炼”“核算”或“检查”等行动。"
+              icon={Layers3}
+            />
+          ) : (
+            <div className="atom-card-grid">
+              {atoms.map((atom) => (
+                <Link
+                  className="atom-card"
+                  key={atom.atomic_skill_id}
+                  to={`/graph?node=${encodeURIComponent(`atom:${atom.atomic_skill_id}`)}`}
+                >
+                  <div className="atom-card-icon">
+                    <Sparkles size={18} />
+                  </div>
+                  <div>
+                    <span className="task-context">
+                      行动原子 · v{atom.version}
+                    </span>
+                    <h2>{atom.name}</h2>
+                    <p>{atom.action}</p>
+                    <small>{atom.contexts.join(" · ")}</small>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

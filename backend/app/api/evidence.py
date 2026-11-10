@@ -1,7 +1,8 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from ..application.evidence import EvidenceService
-from ..domain.models import EvidenceDashboard, LearningRecommendations
+from ..domain.models import LearningRecommendations
+from ..domain.evidence_views import EvidenceDashboard
 
 router = APIRouter(prefix="/api/v2", tags=["evidence"])
 

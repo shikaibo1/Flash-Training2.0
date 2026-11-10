@@ -113,7 +113,7 @@ export interface PracticeRecord {
   skill_name: string;
   category: string;
   difficulty: string;
-  input_type: string;  // voice 或 text
+  input_type: string; // voice 或 text
   transcript: string;
   score: number;
   strengths: string[];
@@ -125,10 +125,67 @@ export interface PracticeRecord {
 }
 
 export type AgentTrace = { agent: string; method: string; summary: string };
-export type EvidenceStatus = 'unmeasured' | 'developing' | 'assisted' | 'independent';
-export type AtomEvidence = { atomic_skill_id: string; name: string; contexts: { context: string; status: EvidenceStatus; evidence_count: number; independent_count: number; last_score: number | null; last_practice_time: string | null }[]; transfer_observed: boolean };
-export type EvidenceItem = { session_id?: string; atomic_skill_id: string; context?: string; mode?: string; assistance_used?: boolean; status: 'observed' | 'not_observable'; score: number | null; quote: string; reason: string; next_action: string; created_at?: string };
-export type EvidenceData = { atomic_skills: AtomEvidence[]; recent_evidence: EvidenceItem[] };
-export type GraphNode = { id: string; type: 'role' | 'task' | 'atom' | 'knowledge'; label: string; description: string; reference_id: string };
-export type GraphData = { nodes: GraphNode[]; edges: { source: string; target: string; relation: 'requires' | 'supports' | 'prerequisite' | 'contains' }[]; atoms: AtomicSkill[]; tasks: Skill[]; roles: { role_id: string; name: string; description: string }[]; knowledge: { knowledge_id: string; name: string; description: string; course: string }[] };
-export type Recommendation = { skill_id: string; title: string; context: string; reason: string; target_atomic_ids: string[] };
+export type EvidenceStatus =
+  "unmeasured" | "developing" | "assisted" | "independent" | "uncertain";
+export type AtomEvidence = {
+  atomic_skill_id: string;
+  name: string;
+  contexts: {
+    context: string;
+    status: EvidenceStatus;
+    evidence_count: number;
+    independent_count: number;
+    last_score: number | null;
+    last_practice_time: string | null;
+  }[];
+  transfer_observed: boolean;
+};
+export type EvidenceItem = {
+  session_id?: string;
+  atomic_skill_id: string;
+  context?: string;
+  mode?: string;
+  assistance_used?: boolean;
+  status: "observed" | "not_observable";
+  score: number | null;
+  quote: string;
+  reason: string;
+  next_action: string;
+  created_at?: string;
+};
+export type EvidenceData = {
+  atomic_skills: AtomEvidence[];
+  recent_evidence: EvidenceItem[];
+  project_observations?: import("./projects").ProjectObservation[];
+};
+export type GraphNode = {
+  id: string;
+  type: "role" | "task" | "atom" | "knowledge";
+  label: string;
+  description: string;
+  reference_id: string;
+};
+export type GraphData = {
+  nodes: GraphNode[];
+  edges: {
+    source: string;
+    target: string;
+    relation: "requires" | "supports" | "prerequisite" | "contains";
+  }[];
+  atoms: AtomicSkill[];
+  tasks: Skill[];
+  roles: { role_id: string; name: string; description: string }[];
+  knowledge: {
+    knowledge_id: string;
+    name: string;
+    description: string;
+    course: string;
+  }[];
+};
+export type Recommendation = {
+  skill_id: string;
+  title: string;
+  context: string;
+  reason: string;
+  target_atomic_ids: string[];
+};

@@ -1,65 +1,166 @@
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Zap, Home, BookOpen, User, Brain, BarChart } from 'lucide-react';
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowUpRight,
+  BookOpen,
+  ChevronRight,
+  CircleUserRound,
+  ClipboardList,
+  GitBranch,
+  LayoutDashboard,
+  Search,
+  Shapes,
+  Sprout,
+} from "lucide-react";
 
-const Header = () => {
-  const location = useLocation();
-  
-  const isActive = (path: string) => {
-    return location.pathname === path ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary';
+const navigation = [
+  { to: "/", label: "学习概览", short: "概览", icon: LayoutDashboard },
+  { to: "/projects", label: "学习目标", short: "目标", icon: Sprout },
+  { to: "/skills", label: "任务练习", short: "任务", icon: BookOpen },
+  { to: "/graph", label: "能力图谱", short: "图谱", icon: GitBranch },
+  { to: "/learning-curve", label: "能力证据", short: "证据", icon: Shapes },
+  { to: "/history", label: "练习记录", short: "记录", icon: ClipboardList },
+  { to: "/profile", label: "个人中心", short: "我的", icon: CircleUserRound },
+];
+
+export default function Header() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const current =
+    navigation.find((item) => item.to === pathname)?.label ||
+    (pathname.startsWith("/projects/")
+      ? "学习目标"
+      : pathname.startsWith("/practice")
+        ? "练习工作台"
+        : "学习空间");
+  const date = new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date());
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    navigate(
+      `/skills${search.trim() ? `?q=${encodeURIComponent(search.trim())}` : ""}`,
+    );
+    setSearch("");
   };
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md px-6 py-4">
-      <div className="flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="p-2 bg-primary rounded-lg text-primary-foreground transform group-hover:scale-110 transition-transform duration-300">
-            <Brain size={24} />
-          </div>
-          <span className="text-xl font-bold tracking-tight">闪练 <span className="text-primary font-normal">FlashTrain</span></span>
+    <>
+      <aside className="app-sidebar" aria-label="学习空间导航">
+        <Link className="brand" to="/" aria-label="FlashTrain 学习概览">
+          <span className="brand-mark">
+            <Shapes size={24} strokeWidth={1.7} />
+          </span>
+          <span>
+            <strong>
+              FlashTrain<span className="brand-dot">.</span>
+            </strong>
+            <small>把知识练成能力</small>
+          </span>
         </Link>
-        
-        <nav className="hidden xl:flex items-center gap-2">
-          <Link to="/" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/')}`}>
-            <Home size={18} />
-            <span>首页</span>
-          </Link>
-          <Link to="/skills" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/skills')}`}>
-            <BookOpen size={18} />
-            <span>任务库</span>
-          </Link>
-          <Link to="/graph" className={`px-4 py-2 rounded-lg text-sm ${isActive('/graph')}`}>能力图谱</Link>
-          <Link to="/learning-curve" className={`px-4 py-2 rounded-lg text-sm ${isActive('/learning-curve')}`}>能力证据</Link>
-          <Link to="/history" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/history')}`}>
-            <BarChart size={18} />
-            <span>练习记录</span>
-          </Link>
-          <Link to="/profile" className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/profile')}`}>
-            <User size={18} />
-            <span>我的</span>
-          </Link>
+        <div className="sidebar-section-label">学习空间</div>
+        <nav className="sidebar-nav">
+          {navigation.slice(0, 5).map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              className={({ isActive }) =>
+                `sidebar-link ${isActive ? "active" : ""}`
+              }
+            >
+              <Icon size={19} strokeWidth={1.7} />
+              <span>{label}</span>
+              <ChevronRight size={14} className="nav-chevron" />
+            </NavLink>
+          ))}
         </nav>
-
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-orange-50 rounded-full border border-orange-100">
-            <Zap size={16} className="text-orange-500 fill-orange-500" />
-            <span className="text-sm font-bold text-orange-600">持续学习</span>
+        <div className="sidebar-section-label review-label">学习回顾</div>
+        <nav className="sidebar-nav">
+          {navigation.slice(5).map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                `sidebar-link ${isActive ? "active" : ""}`
+              }
+            >
+              <Icon size={19} strokeWidth={1.7} />
+              <span>{label}</span>
+              <ChevronRight size={14} className="nav-chevron" />
+            </NavLink>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-note">
+            <Sprout size={23} strokeWidth={1.5} />
+            <p>
+              每一次尝试，
+              <br />
+              都让理解更清晰。
+            </p>
+            <Link to="/learning-curve">
+              查看我的学习证据
+              <ArrowUpRight size={14} />
+            </Link>
           </div>
-          <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-border">
-             <User className="text-muted-foreground" size={20} />
-          </div>
+          <Link to="/profile" className="sidebar-profile">
+            <span className="avatar">学</span>
+            <span>
+              <strong>本地学习者</strong>
+              <small>我的学习空间</small>
+            </span>
+            <ChevronRight size={15} />
+          </Link>
         </div>
-      </div>
-      <nav aria-label="移动端导航" className="flex xl:hidden items-center flex-wrap gap-2 mt-4 text-sm">
-        <Link to="/" className={`px-3 py-2 rounded-lg ${isActive('/')}`}>首页</Link>
-        <Link to="/skills" className={`px-3 py-2 rounded-lg ${isActive('/skills')}`}>任务库</Link>
-        <Link to="/graph" className={`px-3 py-2 rounded-lg ${isActive('/graph')}`}>图谱</Link>
-        <Link to="/learning-curve" className={`px-3 py-2 rounded-lg ${isActive('/learning-curve')}`}>证据</Link>
-        <Link to="/history" className={`px-3 py-2 rounded-lg ${isActive('/history')}`}>记录</Link>
-        <Link to="/profile" className={`px-3 py-2 rounded-lg ${isActive('/profile')}`}>我的</Link>
+      </aside>
+      <header className="workspace-header">
+        <div className="header-breadcrumb">
+          <span>我的学习空间</span>
+          <ChevronRight size={14} />
+          <strong>{current}</strong>
+        </div>
+        <Link className="mobile-brand" to="/">
+          <Shapes size={24} />
+          <strong>FlashTrain.</strong>
+        </Link>
+        <div className="header-actions">
+          <span className="header-date">{date}</span>
+          <form className="header-search" onSubmit={submitSearch}>
+            <Search size={16} />
+            <input
+              aria-label="搜索任务或能力"
+              placeholder="搜索任务或能力"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <kbd>↵</kbd>
+          </form>
+          <Link
+            to="/profile"
+            className="avatar header-avatar"
+            aria-label="打开个人中心"
+          >
+            学
+          </Link>
+        </div>
+      </header>
+      <nav className="mobile-navigation" aria-label="移动端导航">
+        {navigation.slice(0, 5).map(({ to, short, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === "/"}
+            className={({ isActive }) => (isActive ? "active" : "")}
+          >
+            <Icon size={20} strokeWidth={1.7} />
+            <span>{short}</span>
+          </NavLink>
+        ))}
       </nav>
-    </header>
+    </>
   );
-};
-
-export default Header;
+}

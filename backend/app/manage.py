@@ -11,7 +11,7 @@ from .settings import Settings
 def main():
     parser = argparse.ArgumentParser(description="Flash Training SQLite management")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("migrate", help="Initialize v2 schema and seed the career catalog once")
+    commands.add_parser("migrate", help="Initialize schema v3 or back up and upgrade v2; seed catalog once")
     commands.add_parser("inspect", help="Show schema version and row counts")
     backup = commands.add_parser("backup", help="Create a consistent SQLite backup (also works while server runs)")
     backup.add_argument("destination", type=Path)
@@ -21,7 +21,7 @@ def main():
     if args.command == "migrate":
         db.initialize()
         seed_catalog(db, settings.catalog_path)
-        print("Career catalog v2 is ready.")
+        print("Database schema v3 and career catalog v2 are ready.")
         return
     if not db.path.exists():
         parser.error("Database does not exist. Run migrate first.")
