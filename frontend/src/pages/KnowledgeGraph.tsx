@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { careerApi } from "../lib/api";
+import { careerApi, projectApi } from "../lib/api";
 import type { EvidenceData, GraphData, GraphNode } from "../types";
-import { statusLabels } from "../lib/evidence";
+import { statusLabels, statusColors, statusSymbols } from "../lib/evidence";
 import {
   PageHeading,
   Notice,
@@ -12,10 +12,26 @@ import {
 import { Search, ArrowUpRight } from "lucide-react";
 import KnowledgeGraphCanvas from "../components/KnowledgeGraphCanvas";
 import { graphNodeStyles, graphRelationLabels } from "../lib/graphLayout";
+import type { Project } from "../types/projects";
+import { projectStatus } from "../types/projects";
+import type { ProjectGraphPlan } from "../types/goalGraph";
+import { useAccount } from "../hooks/useAccount";
+import EvidenceTimeline from "../components/EvidenceTimeline";
+import "../components/goalGraph.css";
 const labels = Object.fromEntries(Object.entries(graphNodeStyles).map(([key, style]) => [key, style.label]));
 const colors = Object.fromEntries(Object.entries(graphNodeStyles).map(([key, style]) => [key, style.color]));
 const relations = graphRelationLabels;
 export default function KnowledgeGraph() {
+  const [params] = useSearchParams();
+  const { account } = useAccount();
+  const projectId = params.get("project") || "";
+  return <KnowledgeGraphView key={`${account.user_id}:${projectId}`} projectId={projectId} userId={account.user_id} />;
+}
+
+function KnowledgeGraphView({ projectId, userId }: { projectId: string; userId: string }) {
+  const [plan, setPlan] = useState<ProjectGraphPlan | null>(null);
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [projectsError, setProjectsError] = useState("");
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [evidence, setEvidence] = useState<EvidenceData | null>(null);
   const [error, setError] = useState("");
@@ -30,15 +46,14 @@ export default function KnowledgeGraph() {
 
   useEffect(() => {
     let active = true;
-    careerApi
-      .graph()
-      .then((value) => {
-        if (active) setGraph(value);
-      })
+    const graphRequest = projectId
+      ? careerApi.projectGraph(projectId).then(value => { if (active) { setPlan(value); setGraph(value.graph); } })
+      : careerApi.graph().then(value => { if (active) setGraph(value); });
+    graphRequest
       .catch((error) => {
         if (active) setError(error.message);
       });
-    careerApi
+    if (!projectId) careerApi
       .evidence()
       .then((value) => {
         if (active) setEvidence(value);
@@ -46,10 +61,10 @@ export default function KnowledgeGraph() {
       .catch((error) => {
         if (active) setEvidenceError(error.message);
       });
-    return () => {
-      active = false;
-    };
-  }, [revision]);
+    projectApi.list().then(value => { if (active) { setProjects(value.projects); setProjectsError(""); } })
+      .catch(failure => { if (active) setProjectsError(failure.message); });
+    return () => { active = false; };
+  }, [projectId, revision]);
 
   const scopedNodes = useMemo(() => {
     if (!graph) return [];
@@ -58,6 +73,9 @@ export default function KnowledgeGraph() {
     if (role) {
       const tasks = graph.tasks.filter((task) => task.role_id === role);
       const atoms = new Set(tasks.flatMap((task) => task.atomic_skills));
+      if (plan && tasks.length) {
+        for (const atomId of plan.prerequisite_atom_ids) atoms.add(atomId);
+      }
       const knowledge = new Set(
         graph.atoms
           .filter((atom) => atoms.has(atom.atomic_skill_id))
@@ -95,7 +113,7 @@ export default function KnowledgeGraph() {
     }
 
     return graph.nodes.filter(node => !allowed || allowed.has(node.id));
-  }, [graph, role, course]);
+  }, [graph, role, course, plan]);
 
   const filtered = useMemo(() => scopedNodes.filter(node =>
     (!type || node.type === type) && `${node.label} ${node.description}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -116,8 +134,9 @@ export default function KnowledgeGraph() {
   const select = (node: GraphNode) => {
     if (!scopedNodes.some(item => item.id === node.id)) { setRole(""); setCourse(""); }
     if (!canvasNodes.some(item => item.id === node.id)) { setQuery(""); setType(""); }
-    setParams({ node: node.id });
+    setParams(previous => { const next = new URLSearchParams(previous); next.set("node", node.id); return next; });
   };
+  const clearNode = () => setParams(previous => { const next = new URLSearchParams(previous); next.delete("node"); return next; });
   const atom = graph?.atoms.find(
     (item) =>
       selected?.type === "atom" &&
@@ -126,6 +145,9 @@ export default function KnowledgeGraph() {
   const personal = evidence?.atomic_skills.find(
     (item) => item.atomic_skill_id === atom?.atomic_skill_id,
   );
+  const personalContexts = plan
+    ? plan.states.filter(state => state.atomic_skill_id === atom?.atomic_skill_id)
+    : personal?.contexts || [];
   const relatedTasks =
     graph?.tasks.filter((task) =>
       atom
@@ -140,6 +162,44 @@ export default function KnowledgeGraph() {
         title="看清知识与行动的连接"
         description="把职业、任务、行动与知识放在一张图里。拖动节点整理连接，点击节点回看条件、证据和练习入口。"
       />
+      <section className="goal-controls" aria-label="图谱目标选择">
+        <label>查看范围 <select aria-label="选择学习项目" value={projectId} onChange={event => {
+          const next = new URLSearchParams(); if (event.target.value) next.set("project", event.target.value); setParams(next);
+        }}><option value="">全部能力关系</option>{projectId && !projects?.some(item => item.project_id === projectId) && <option value={projectId}>当前项目</option>}{projects?.map(item => <option key={item.project_id} value={item.project_id}>{item.goal}</option>)}</select></label>
+        <Link className="goal-text-link" to="/projects">管理学习目标 →</Link>
+        <button className="goal-button" type="button" onClick={() => { setError(""); setEvidenceError(""); setRevision(value => value + 1); }}>刷新证据与图谱</button>
+        {projectsError && <p role="alert">目标列表暂不可用：{projectsError}</p>}
+      </section>
+      {plan && <section className="goal-summary">
+        <div className="goal-meta"><span>目标图谱</span><span>{plan.context || "待选择练习范围"}</span><span>{projectStatus[plan.status as keyof typeof projectStatus] || plan.status}</span></div>
+        <h2>{plan.goal}</h2><p>{plan.scope_note}</p>
+        {plan.task_id && <p>目标原子 {plan.target_atom_ids.length} 个 · 前置原子 {plan.prerequisite_atom_ids.length} 个 · 同情境最新记录有独立证据 {plan.states.filter(state => plan.target_atom_ids.includes(state.atomic_skill_id) && state.status === "independent").length}/{plan.target_atom_ids.length}（按 ID 汇总，非掌握率）</p>}
+        {!plan.task_id && <p className="goal-empty">目标尚未绑定任务，先选择适用的练习范围，再查看所需能力。</p>}
+        <div className="goal-project-links"><Link className="goal-text-link" to={`/projects/${encodeURIComponent(plan.project_id)}`}>回到项目继续学习 →</Link><a className="goal-text-link" href="#graph-node-details">查看节点与证据 ↓</a></div>
+        {plan.recommendations.length > 0 && (
+          <div className="goal-recommendations">
+            {plan.recommendations.map(item => {
+              const targetNames = item.target_atomic_ids.map(atomId =>
+                plan.graph.atoms.find(atom => atom.atomic_skill_id === atomId)?.name || atomId,
+              );
+              return (
+                <article key={item.skill_id}>
+                  <h3>{item.title}</h3>
+                  <p>{item.reason}</p>
+                  <p>关注：{targetNames.join("、")}</p>
+                  <Link
+                    className="goal-text-link"
+                    to={`/practice/${encodeURIComponent(item.skill_id)}?mode=independent&atoms=${encodeURIComponent(item.target_atomic_ids.join(","))}`}
+                  >
+                    独立尝试 →
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        {plan.warnings.length > 0 && <details><summary>定义来源与比较边界 · {plan.warnings.length} 条说明</summary><ul>{plan.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details>}
+      </section>}
       <div className="library-toolbar graph-toolbar">
         <div className="library-search">
           <Search size={16} />
@@ -149,7 +209,7 @@ export default function KnowledgeGraph() {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
-              setParams({});
+              clearNode();
             }}
           />
         </div>
@@ -159,7 +219,7 @@ export default function KnowledgeGraph() {
           value={role}
           onChange={(e) => {
             setRole(e.target.value);
-            setParams({});
+            clearNode();
           }}
         >
           <option value="">全部职业</option>
@@ -175,7 +235,7 @@ export default function KnowledgeGraph() {
           value={course}
           onChange={(e) => {
             setCourse(e.target.value);
-            setParams({});
+            clearNode();
           }}
         >
           <option value="">全部课程</option>
@@ -191,7 +251,7 @@ export default function KnowledgeGraph() {
           value={type}
           onChange={(e) => {
             setType(e.target.value);
-            setParams({});
+            clearNode();
           }}
         >
           <option value="">全部类型</option>
@@ -202,7 +262,7 @@ export default function KnowledgeGraph() {
           ))}
         </select>
         {selectedId && (
-          <button className="text-primary" onClick={() => setParams({})}>
+          <button className="text-primary" onClick={clearNode}>
             回到筛选概览
           </button>
         )}
@@ -236,13 +296,14 @@ export default function KnowledgeGraph() {
               </span>
             ))}
           </div>
-          <KnowledgeGraphCanvas graph={graph} nodes={canvasNodes} matchingIds={matchingIds}
+          {plan?.task_id && <div className="goal-state-legend"><span>◎ 目标原子 · 虚线外圈为前置原子</span>{Object.entries(statusLabels).map(([key, label]) => <span key={key} style={{ color: statusColors[key as keyof typeof statusColors] }}>{statusSymbols[key as keyof typeof statusSymbols]} {label}</span>)}</div>}
+          <KnowledgeGraphCanvas key={`${userId}:${projectId || "all"}`} storageKey={`flash-graph-view:${userId}:${projectId || "all"}`} plan={plan} graph={graph} nodes={canvasNodes} matchingIds={matchingIds}
             selectedId={selected?.id} evidence={evidence} onSelect={select} />
           {(query.trim() || type) && <p className="network-search-note">匹配 {filtered.length} 个节点，同时保留其直接关联节点作为上下文；职业与课程范围仍按筛选限制。</p>}
           <div className="graph-details-layout">
             <section className="panel graph-node-panel">
               <SectionHeading title={`全部匹配节点 · ${filtered.length}`} />
-              {!filtered.length && <p>没有匹配节点，请调整筛选。</p>}
+              {!filtered.length && <p>{plan && !plan.task_id ? "目标尚未绑定任务。" : "没有匹配节点，请调整筛选。"}</p>}
               <div className="graph-node-list">
                 {filtered.map((node) => (
                   <button
@@ -339,12 +400,12 @@ export default function KnowledgeGraph() {
                         {atom.contexts.join("、")}
                       </p>
                       <h3 className="font-semibold">我的情境证据</h3>
-                      {!evidence && (
+                      {!plan && !evidence && (
                         <p>
                           {evidenceError ? "证据无法加载" : "正在加载证据…"}
                         </p>
                       )}
-                      {personal?.contexts.map((item) => (
+                      {personalContexts.map((item) => (
                         <p key={item.context}>
                           {item.context}：{statusLabels[item.status]} ·{" "}
                           {item.evidence_count} 条证据
@@ -353,41 +414,14 @@ export default function KnowledgeGraph() {
                             : " · 未换算分数"}
                         </p>
                       ))}
-                      {personal && (
+                      {personal && !plan && (
                         <p>
                           {personal.transfer_observed
                             ? "已有跨情境观察"
                             : "尚无跨情境证据"}
                         </p>
                       )}
-                      {evidence?.project_observations
-                        ?.filter(
-                          (o) => o.atomic_skill_id === atom.atomic_skill_id,
-                        )
-                        .slice(0, 5)
-                        .map((o) => (
-                          <div
-                            className="project-graph-evidence"
-                            key={o.observation_id}
-                          >
-                            <p>{o.finding.reason}</p>
-                            {o.finding.quote && (
-                              <blockquote>“{o.finding.quote}”</blockquote>
-                            )}
-                            <Link
-                              className="text-primary"
-                              to={`/projects/${o.project_id}`}
-                            >
-                              查看
-                              {o.stage === "probe"
-                                ? "追问"
-                                : o.stage === "verification"
-                                  ? "复测"
-                                  : "初次回答"}
-                              依据 →
-                            </Link>
-                          </div>
-                        ))}
+                      <EvidenceTimeline key={`${atom.atomic_skill_id}:${revision}`} atomicSkillId={atom.atomic_skill_id} context={plan?.context || undefined} projectId={projectId || undefined} />
                     </>
                   )}
                   <h3 className="font-semibold">直接关系</h3>
@@ -432,7 +466,7 @@ export default function KnowledgeGraph() {
                             交付物：{task.deliverable}
                           </p>
                           <div className="flex flex-wrap gap-3">
-                            {["guided", "independent", "transfer"].map(
+                            {plan ? <Link className="text-primary text-sm" to={`/projects/${encodeURIComponent(plan.project_id)}`}>按项目保存的任务继续学习 →</Link> : ["guided", "independent", "transfer"].map(
                               (mode, index) => (
                                 <Link
                                   key={mode}

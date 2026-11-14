@@ -48,11 +48,17 @@ v1 全局得分、掌握度、预测、学习曲线、自评和优化接口统�
 | GET /api/v1/practice/sessions/{id} | 恢复会话 |
 | POST /api/v1/practice/submit | 提交文字答案与评估 |
 | GET /api/v2/graph | 课程、知识、原子、任务与岗位关联 |
+| GET /api/v2/graph/projects/{project_id} | 本人项目的目标/前置图谱、同情境状态与推荐 |
 | GET /api/v2/evidence | 用户证据 |
+| GET /api/v2/evidence/atoms/{atom_id}/timeline | 本人完整原子证据，合并排序后分页 |
 | GET /api/v2/recommendations | 依据证据与先修关系的建议 |
 | GET /api/v2/bridge/catalog | 固定基线、变式与综合交付案例 |
 | GET /api/v2/bridge/sessions/{id} | 案例元数据、配对观察与诊断状态 |
 | POST /api/v2/bridge/sessions/{id}/diagnosis | 保存诊断选择与规则解释 |
+
+目标图谱和时间线需登录，只读现有数据，不调用模型或更改历史成绩。时间线支持 `context`、`project_id`、`offset`、`limit`（默认 20，上限 100），返回 `items`、筛选前可选情境 `contexts`、`total`、`offset` 和 `limit`。指定项目时先验证所有权，只返回该项目观察；普通练习没有项目关联。时间线从完整历史读取，独立于仪表盘最近 100 条的展示限制。
+
+`GraphService.project_plan` 复用图构建及学习推荐；`EvidenceTimelineService.timeline` 解析本页原始会话/项目快照，返回定义版本和来源标识。目标原子用保存快照，其他前置、知识、职业引用当前目录；状态仍按原子 ID 与情境汇总，不能视为定义版本一致或已长期掌握。2026-11-14 现有 84 项后端测试通过，另完成目标图谱与时间线的临时环境专项验证，未调用真实模型或写用户练习库。具体流程见 [目标图谱说明](../docs/goal-map-plan.md)。
 
 受控练习仍从 `/api/v1/practice/start` 开始，在 params 传入 `bridge_case_id`（`conversion_baseline`、`conversion_representation`、`conversion_boundary`、`conversion_synthesis`）。关联基线时同时传 `source_session_id`；服务端校验会话所有者、完成状态和目标定义。固定材料及版本保存在会话中，评分复用原提交接口。
 

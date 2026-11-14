@@ -4,6 +4,9 @@ import { BookOpen, BriefcaseBusiness, Focus, Layers3, Maximize2, Minus, Plus, Ro
 import type { EvidenceData, GraphData, GraphNode } from "../types";
 import { graphCurve, graphNodeStyles, graphRelationLabels, layoutGraph } from "../lib/graphLayout";
 import type { Point } from "../lib/graphLayout";
+import type { ProjectGraphPlan } from '../types/goalGraph';
+import { statusColors, statusLabels, statusSymbols } from '../lib/evidence';
+import { readGraphPreferences } from '../lib/graphPreferences';
 
 type Camera = { x: number; y: number; scale: number };
 type Gesture = {
@@ -13,6 +16,8 @@ type Gesture = {
 type Props = {
   graph: GraphData; nodes: GraphNode[]; matchingIds: Set<string>;
   selectedId?: string; evidence: EvidenceData | null;
+  plan?: ProjectGraphPlan | null;
+  storageKey: string;
   onSelect: (node: GraphNode) => void;
 };
 const icons = { role: BriefcaseBusiness, task: Workflow, atom: Layers3, knowledge: BookOpen };
@@ -26,18 +31,32 @@ function localPoint(svg: SVGSVGElement | null, clientX: number, clientY: number)
   return { x: point.x, y: point.y };
 }
 
-export default function KnowledgeGraphCanvas({ graph, nodes, matchingIds, selectedId, evidence, onSelect }: Props) {
+export default function KnowledgeGraphCanvas({ graph, nodes, matchingIds, selectedId, evidence, plan, storageKey, onSelect }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const markerId = useId().replace(/:/g, "");
   const helpId = useId();
   const [size, setSize] = useState({ width: 1000, height: 620 });
-  const [offsets, setOffsets] = useState<Record<string, Point>>({});
+  const [savedPreferences] = useState(() => readGraphPreferences(storageKey, graph.nodes));
+  const [storageError, setStorageError] = useState(savedPreferences.error);
+  const [offsets, setOffsets] = useState<Record<string, Point>>(savedPreferences.offsets);
   const [storedCamera, setStoredCamera] = useState<{ key: string; value: Camera } | null>(null);
-  const [focused, setFocused] = useState(false);
-  const [showLabels, setShowLabels] = useState(false);
-  const [showEvidence, setShowEvidence] = useState(true);
+  const [focused, setFocused] = useState(savedPreferences.focused);
+  const [showLabels, setShowLabels] = useState(savedPreferences.showLabels);
+  const [showEvidence, setShowEvidence] = useState(savedPreferences.showEvidence);
+  // Save after a render, and cancel an obsolete save if preferences change again.
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ version: 1, offsets, focused, showLabels, showEvidence }));
+        setStorageError(savedPreferences.error);
+      } catch { setStorageError('布局偏好无法保存；当前仍可拖动浏览，刷新后可能丢失。'); }
+    });
+    return () => { active = false; };
+  }, [storageKey, offsets, focused, showLabels, showEvidence, savedPreferences.error]);
   const initialPositions = useMemo(() => layoutGraph(graph.nodes, graph.edges), [graph.nodes, graph.edges]);
   const positions = useMemo(() => ({ ...initialPositions, ...offsets }), [initialPositions, offsets]);
   const scopedIds = new Set(nodes.map(node => node.id));
@@ -60,7 +79,7 @@ export default function KnowledgeGraphCanvas({ graph, nodes, matchingIds, select
     const minX = Math.min(...points.map(point => point.x)) - 100;
     const maxX = Math.max(...points.map(point => point.x)) + 100;
     const minY = Math.min(...points.map(point => point.y)) - 55;
-    const maxY = Math.max(...points.map(point => point.y)) + 85;
+    const maxY = Math.max(...points.map(point => point.y)) + 120;
     const scale = Math.min(1.25, clampScale(Math.min((size.width - 48) / (maxX - minX), (size.height - 48) / (maxY - minY))));
     return { x: size.width / 2 - (minX + maxX) / 2 * scale, y: size.height / 2 - (minY + maxY) / 2 * scale, scale };
   };
@@ -204,24 +223,30 @@ export default function KnowledgeGraphCanvas({ graph, nodes, matchingIds, select
             const observed = evidence?.atomic_skills.find(item => item.atomic_skill_id === node.reference_id)?.contexts.some(context => context.evidence_count > 0)
               || evidence?.project_observations?.some(item => item.atomic_skill_id === node.reference_id);
             const hasEvidence = node.type === "atom" && Boolean(observed);
+            const state = node.type === 'atom' ? plan?.states.find(item => item.atomic_skill_id === node.reference_id) : undefined;
+            const isTarget = node.type === 'atom' && plan?.target_atom_ids.includes(node.reference_id);
+            const isPrerequisite = node.type === 'atom' && plan?.prerequisite_atom_ids.includes(node.reference_id);
             const labelLines = node.label.length > 11 ? [node.label.slice(0, 11), node.label.slice(11, 22) + (node.label.length > 22 ? "…" : "")] : [node.label];
             return <g key={node.id} className="network-node" role="button" tabIndex={0} aria-pressed={selected}
-              aria-label={`查看${style.label}：${node.label}${hasEvidence ? "，有情境证据" : ""}`}
+              aria-label={`查看${style.label}：${node.label}${isTarget ? '，目标原子' : isPrerequisite ? '，前置原子' : ''}${state ? `，${statusLabels[state.status]}` : hasEvidence ? "，有情境证据" : ""}`}
               transform={`translate(${point.x},${point.y})`} opacity={dim ? .3 : 1}
               onPointerDown={event => startDrag(event, node)} onKeyDown={event => nodeKey(event, node)}
               onClick={event => { if (event.detail === 0) onSelect(node); }}>
               <title>{style.label}：{node.label}。拖动调整位置，点击查看详情。</title>
+              {(isTarget || isPrerequisite) && <circle r={style.radius + 5} fill="none" stroke={isTarget ? '#4c7050' : '#829873'} strokeWidth={isTarget ? 2 : 1.5} strokeDasharray={isPrerequisite ? '3 4' : undefined} />}
               {selected && <circle r={style.radius + 8} fill="none" stroke={style.color} strokeWidth="1.5" opacity=".4" />}
               <circle className="network-node-disc" r={style.radius} fill={style.fill} stroke={selected ? style.color : "#fff"} strokeWidth={selected ? 2 : 3} />
               <Icon x={-10} y={-10} width={20} height={20} color={style.color} strokeWidth={1.6} aria-hidden="true" pointerEvents="none" />
-              {showEvidence && hasEvidence && <circle cx={style.radius * .75} cy={-style.radius * .7} r="5" fill="#397f61" stroke="white" strokeWidth="2" />}
+              {showEvidence && state && <circle r={style.radius + 10} fill="none" stroke={statusColors[state.status]} strokeWidth="2" strokeDasharray={state.status === 'unmeasured' ? '2 5' : undefined} />}
+              {showEvidence && !plan && hasEvidence && <circle cx={style.radius * .75} cy={-style.radius * .7} r="5" fill="#397f61" stroke="white" strokeWidth="2" />}
               <text className="network-node-label" y={style.radius + 20} textAnchor="middle">{labelLines.map((line, index) => <tspan key={index} x="0" dy={index === 0 ? 0 : 17}>{line}</tspan>)}</text>
               <text className="network-node-kind" y={style.radius + 23 + labelLines.length * 17} textAnchor="middle" fill={style.color}>{style.label}</text>
+              {showEvidence && state && <text className="network-state-label" y={style.radius + 38 + labelLines.length * 17} textAnchor="middle" fill={statusColors[state.status]}>{statusSymbols[state.status]} {statusLabels[state.status]}</text>}
             </g>;
           })}
         </g>
       </svg>
-      {!visible.length && <div className="network-empty">没有匹配节点，请调整上方筛选。</div>}
+      {!visible.length && <div className="network-empty">{plan && !plan.task_id ? '目标尚未绑定任务，请先回到项目选择练习范围。' : '没有匹配节点，请调整上方筛选。'}</div>}
       <div className="network-controls" aria-label="画布控制">
         <button type="button" onClick={() => zoom(1.25)} disabled={camera.scale >= MAX_SCALE} aria-label="放大图谱" title="放大"><Plus size={17} /></button>
         <span aria-label={`缩放比例 ${Math.round(camera.scale * 100)}%`}>{Math.round(camera.scale * 100)}%</span>
@@ -231,6 +256,7 @@ export default function KnowledgeGraphCanvas({ graph, nodes, matchingIds, select
       </div>
     </div>
     <div className="network-caption"><p id={helpId}>拖动节点调整布局，拖动空白平移。按住 Ctrl / ⌘ 滚轮缩放；也可用右下角按钮。键盘选中节点后，方向键移动，Enter 查看。</p><span>{visible.length} 个节点 · {links.length} 条关系</span></div>
-    {showEvidence && <p className="network-evidence-note"><span /> 绿点仅表示存在情境证据，不代表掌握；请在详情中查看独立作答、追问和复测的区别。虚线表示前置关系。</p>}
+    {showEvidence && <p className="network-evidence-note"><span />{plan ? `状态限于「${plan.context || '未绑定'}」情境，按历史证据汇总，不代表长期掌握。外圈区分目标与前置，连线虚线表示前置关系。` : '绿点仅表示存在情境证据，不代表掌握；请在详情中查看独立作答、追问和复测的区别。虚线表示前置关系。'}</p>}
+    {storageError && <p className="network-storage-note" role="status">{storageError}</p>}
   </section>;
 }

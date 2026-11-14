@@ -68,17 +68,17 @@ class ProjectTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def create(self, **kwargs):
-        return self.svc.create(ProjectCreate(request_id='create', goal='学习数据库与订单分析', task_id=CASE_TASK_ID, **kwargs))
+        return self.svc.create(ProjectCreate(user_id="learner", request_id='create', goal='学习数据库与订单分析', task_id=CASE_TASK_ID, **kwargs))
 
     def action(self, p, action, **kwargs):
-        return self.svc.act(p.project_id, ProjectAction(request_id=f'{action}-{p.revision}', revision=p.revision,
+        return self.svc.act(p.project_id, ProjectAction(user_id="learner", request_id=f'{action}-{p.revision}', revision=p.revision,
             action=action, round_id=p.rounds[-1].round_id if p.rounds else None, **kwargs))
 
     def answer(self, p, number=340, **kwargs):
         return self.action(p, 'answer', answer='分别求订单总额减退款总额；一对多连接会重复订单金额；核对无退款订单。', numeric_answer=number, **kwargs)
 
     def test_pending_goal_preserved_without_forced_mapping(self):
-        p = self.svc.create(ProjectCreate(request_id='new', goal='学习世界历史', source_text='我的阅读资料'))
+        p = self.svc.create(ProjectCreate(user_id="learner", request_id='new', goal='学习世界历史', source_text='我的阅读资料'))
         self.assertEqual(p.status, 'pending')
         self.assertEqual(p.source_text, '我的阅读资料')
         self.assertFalse(self.ai.calls)
@@ -98,7 +98,7 @@ class ProjectTests(unittest.TestCase):
         self.assertIsNone(p.rounds[-1].expected_value)
         self.assertEqual(p.rounds[-1].content.example_answer, '')
         with self.work.read() as u:
-            self.assertEqual(u.projects.get(p.project_id,'default_user').rounds[-1].expected_value,340)
+            self.assertEqual(u.projects.get(p.project_id,'learner').rounds[-1].expected_value,340)
 
     def test_full_evidence_stops_without_probes_one_call(self):
         p = self.answer(self.action(self.create(), 'start'))
@@ -117,7 +117,7 @@ class ProjectTests(unittest.TestCase):
         p = self.answer(p,number=None)
         self.assertEqual(p.status,'review')
         self.assertEqual(p.probes_used,1)
-        summary = next(a for a in self.services.evidence.dashboard('default_user').atomic_skills if a.atomic_skill_id==JOIN)
+        summary = next(a for a in self.services.evidence.dashboard('learner').atomic_skills if a.atomic_skill_id==JOIN)
         self.assertEqual(summary.contexts[0].status,'assisted')
 
     def test_explicit_gap_goes_directly_to_support(self):
@@ -165,10 +165,10 @@ class ProjectTests(unittest.TestCase):
     def test_help_and_micro_do_not_create_mastery_observations(self):
         self.ai.states={JOIN:'gap'}
         p=self.answer(self.action(self.create(),'start'))
-        with self.work.read() as u: before=len(u.projects.observations('default_user'))
+        with self.work.read() as u: before=len(u.projects.observations('learner'))
         p=self.action(p,'help',level='micro')
         p=self.action(p,'reflect',answer='直接连接会重复；需要保持订单粒度。')
-        with self.work.read() as u: self.assertEqual(len(u.projects.observations('default_user')),before)
+        with self.work.read() as u: self.assertEqual(len(u.projects.observations('learner')),before)
         self.assertEqual(p.status,'support')
 
     def test_learner_can_choose_other_atom_for_help(self):
@@ -203,12 +203,12 @@ class ProjectTests(unittest.TestCase):
 
     def test_draft_survives_new_service_and_prevents_stale_overwrite(self):
         p=self.action(self.create(),'start'); r=p.rounds[-1]
-        saved=self.svc.draft(p.project_id,ProjectDraft(round_id=r.round_id,revision=p.revision,text='我的草稿',numeric_answer=340,draft_number=1,assistance_used=True))
-        restarted=build_services(self.work,self.ai).projects.get(p.project_id,'default_user')
+        saved=self.svc.draft(p.project_id,ProjectDraft(user_id="learner", round_id=r.round_id,revision=p.revision,text='我的草稿',numeric_answer=340,draft_number=1,assistance_used=True))
+        restarted=build_services(self.work,self.ai).projects.get(p.project_id,'learner')
         self.assertEqual(restarted.rounds[-1].draft,'我的草稿')
         self.assertEqual(restarted.rounds[-1].numeric_answer,340)
         with self.assertRaises(AppError):
-            self.svc.draft(p.project_id,ProjectDraft(round_id=r.round_id,revision=p.revision,text='旧窗口',draft_number=2))
+            self.svc.draft(p.project_id,ProjectDraft(user_id="learner", round_id=r.round_id,revision=p.revision,text='旧窗口',draft_number=2))
         p=self.answer(saved)
         self.assertTrue(p.rounds[-1].assistance_used)
 
@@ -218,13 +218,13 @@ class ProjectTests(unittest.TestCase):
                          lambda r:{**r,'findings':r['findings'][:-1]}):
             self.ai.override=override
             with self.assertRaises(AIError): self.answer(p)
-            self.assertEqual(self.svc.get(p.project_id,'default_user').revision,p.revision)
+            self.assertEqual(self.svc.get(p.project_id,'learner').revision,p.revision)
         self.ai.override=None
         self.assertEqual(self.answer(p).status,'review')
 
     def test_duplicate_operation_and_stale_revision(self):
         p=self.action(self.create(),'start')
-        command=ProjectAction(request_id='answer-once',revision=p.revision,action='answer',round_id=p.rounds[-1].round_id,answer='分别合计后相减并检查连接倍增',numeric_answer=340)
+        command=ProjectAction(user_id="learner", request_id='answer-once',revision=p.revision,action='answer',round_id=p.rounds[-1].round_id,answer='分别合计后相减并检查连接倍增',numeric_answer=340)
         result=self.svc.act(p.project_id,command)
         self.assertEqual(self.svc.act(p.project_id,command).revision,result.revision)
         self.assertEqual(len(self.ai.calls),1)
@@ -247,23 +247,23 @@ class ProjectTests(unittest.TestCase):
     def test_graph_uncertainty_and_quote_are_visible(self):
         self.ai.states={JOIN:'uncertain'}
         p=self.answer(self.action(self.create(),'start'))
-        dashboard=self.services.evidence.dashboard('default_user')
+        dashboard=self.services.evidence.dashboard('learner')
         state=next(a for a in dashboard.atomic_skills if a.atomic_skill_id==JOIN).contexts[0]
         self.assertEqual(state.status,'uncertain'); self.assertIsNone(state.last_score)
         self.assertTrue(dashboard.project_observations)
         self.assertIn(JOIN,[a.atomic_skill_id for a in self.services.graph.graph().atoms])
-        self.services.evidence.recommendations('default_user')
+        self.services.evidence.recommendations('learner')
 
     def test_case_exhaustion_does_not_recycle_unseen_task(self):
         p=self.answer(self.action(self.create(),'start'))
         for value in (250,365,330,370):
             p=self.answer(self.action(p,'verify'),number=value)
         with self.assertRaises(AppError): self.action(p,'verify')
-        self.assertEqual(len(self.svc.get(p.project_id,'default_user').rounds),5)
+        self.assertEqual(len(self.svc.get(p.project_id,'learner').rounds),5)
 
     def test_stale_draft_number_with_different_text_is_rejected(self):
         p=self.action(self.create(),'start'); r=p.rounds[-1]
-        body=ProjectDraft(round_id=r.round_id,revision=p.revision,text='窗口甲',draft_number=1)
+        body=ProjectDraft(user_id="learner", round_id=r.round_id,revision=p.revision,text='窗口甲',draft_number=1)
         saved=self.svc.draft(p.project_id,body)
         self.assertEqual(self.svc.draft(p.project_id,body).revision,saved.revision)
         with self.assertRaises(AppError):
@@ -276,7 +276,7 @@ class ProjectTests(unittest.TestCase):
             if 'atom' in payload: return {'title':'检查分母','text':'先核对总体范围。','exercise':''}
             return dict(legacy.CONTENT)
         self.ai.generate_json=model
-        p=self.svc.create(ProjectCreate(request_id='generic',goal='解释数据比较',task_id='s1',source_text='我的课件摘录'))
+        p=self.svc.create(ProjectCreate(user_id="learner", request_id='generic',goal='解释数据比较',task_id='s1',source_text='我的课件摘录'))
         p=self.action(p,'start')
         self.assertEqual(p.rounds[-1].content.example_answer,'')
         self.ai.states={'a1':'gap'}
@@ -284,7 +284,7 @@ class ProjectTests(unittest.TestCase):
         p=self.action(p,'help',level='explain')
         self.assertEqual(p.interventions[-1].title,'检查分母')
         with self.assertRaises(AppError): self.action(p,'verify')
-        self.assertEqual(self.svc.get(p.project_id,'default_user').status,'support')
+        self.assertEqual(self.svc.get(p.project_id,'learner').status,'support')
 
     def test_task_limitation_never_becomes_gap_or_forced_probe(self):
         self.ai.states={JOIN:'uncertain'}; self.ai.probe_id=JOIN
@@ -297,7 +297,7 @@ class ProjectTests(unittest.TestCase):
         self.ai.override=lambda r:{**r,'findings':[{**f,'issue':'explicit_error'} for f in r['findings']]}
         p=self.action(self.create(),'start')
         with self.assertRaises(AIError): self.answer(p)
-        with self.work.read() as u: self.assertEqual(len(u.projects.observations('default_user')),0)
+        with self.work.read() as u: self.assertEqual(len(u.projects.observations('learner')),0)
 
     def test_http_project_routes(self):
         # Reuse the minimal ASGI driver, not the old one-shot practice assertions.
@@ -324,7 +324,7 @@ class MigrationTests(unittest.TestCase):
             root=Path(folder); db=self.make_v2(root)
             with db.read() as c: original=tuple(c.execute('SELECT * FROM users').fetchone())
             db.initialize(); db.initialize()
-            self.assertEqual(db.check_health(),4)
+            self.assertEqual(db.check_health(),5)
             with db.read() as c: self.assertEqual(tuple(c.execute('SELECT * FROM users').fetchone()),original)
             backups=list((root/'backups').glob('*.sqlite3')); self.assertEqual(len(backups),1)
             with closing(sqlite3.connect(backups[0])) as c:

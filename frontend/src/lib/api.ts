@@ -11,6 +11,7 @@ import type {
   EvidenceItem,
 } from "../types";
 import type { Project } from "../types/projects";
+import type { EvidenceTimeline, ProjectGraphPlan } from '../types/goalGraph';
 
 // Backend address only. GPT credentials are stored exclusively in backend/.env.ai.
 const API_BASE_URL =
@@ -218,6 +219,15 @@ export const practiceV1Api = {
 
 export const careerApi = {
   graph: () => request<GraphData>("/v2/graph"),
+  projectGraph: (projectId: string) => request<ProjectGraphPlan>(`/v2/graph/projects/${part(projectId)}`),
+  evidenceTimeline: (atomId: string, options: { context?: string; projectId?: string; offset?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (options.context) query.set('context', options.context);
+    if (options.projectId) query.set('project_id', options.projectId);
+    query.set('offset', String(options.offset ?? 0));
+    query.set('limit', String(options.limit ?? 20));
+    return request<EvidenceTimeline>(`/v2/evidence/atoms/${part(atomId)}/timeline?${query}`);
+  },
   evidence: () =>
     request<EvidenceData>("/v2/evidence"),
   recommendations: () =>

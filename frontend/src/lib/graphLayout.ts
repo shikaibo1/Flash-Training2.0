@@ -48,7 +48,7 @@ export function layoutGraph(nodes: GraphNode[], edges: GraphEdge[]): Record<stri
         const dy = positions[b].y - positions[a].y || .01;
         const distance = Math.hypot(dx, dy);
         const repulsion = Math.min(22, 5500 / (distance * distance));
-        const clearance = Math.hypot(dx / 175, dy / 120);
+        const clearance = Math.hypot(dx / 175, dy / 145);
         const collision = Math.max(0, 1 - clearance) * 24;
         const fx = dx / distance * (repulsion + collision);
         const fy = dy / distance * (repulsion + collision);

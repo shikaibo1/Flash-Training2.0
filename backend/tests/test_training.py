@@ -5,6 +5,7 @@ import json
 import sqlite3
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
@@ -14,6 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.bootstrap import build_services
+from app.application.auth import password_digest, token_digest
+from app.domain.accounts import Account, AccountCredentials
 from app.domain.commands import AtomicCreate, SkillPatch
 from app.errors import AIError, AppError
 from app.infrastructure.ai import OpenAIJSONClient
@@ -129,9 +132,20 @@ class TrainingTests(unittest.TestCase):
     def summary(self, atom_id="a1", user_id="u1"):
         return next(item for item in self.evidence.dashboard(user_id).atomic_skills if item.atomic_skill_id == atom_id)
 
-    async def _request(self, method, path, body=None, query=b"", ai=None):
+    async def _request(self, method, path, body=None, query=b"", ai=None, authenticated=True):
         app = create_app(self.settings, ai=ai or self.ai)
         messages, sent = [], False
+        headers = [(b"content-type", b"application/json"), (b"x-requested-with", b"FlashTrain")]
+        if authenticated:
+            if not getattr(self, "_http_token", None):
+                self._http_token = "temporary-http-test-session"
+                salt, now = "00" * 16, int(time.time())
+                credentials = AccountCredentials(Account(user_id="u1", username="http_test", display_name="HTTP learner"),
+                    salt, password_digest("temporary-test-password", salt))
+                with self.work.write() as unit:
+                    unit.users.add_account(credentials)
+                    unit.users.add_session(token_digest(self._http_token), "u1", now + 3600, now)
+            headers.append((b"cookie", f"flash_session={self._http_token}".encode()))
 
         async def receive():
             nonlocal sent
@@ -145,7 +159,7 @@ class TrainingTests(unittest.TestCase):
 
         scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": method,
                  "scheme": "http", "path": path, "raw_path": path.encode(), "query_string": query,
-                 "headers": [(b"content-type", b"application/json")], "client": ("127.0.0.1", 1234), "server": ("127.0.0.1", 8001)}
+                 "headers": headers, "client": ("127.0.0.1", 1234), "server": ("127.0.0.1", 8001)}
         async with app.router.lifespan_context(app):
             await app(scope, receive, send)
         status = next(message["status"] for message in messages if message["type"] == "http.response.start")
@@ -231,7 +245,7 @@ class TrainingTests(unittest.TestCase):
                     self.assertEqual(bool(content.hint), mode == "guided")
                     self.assertEqual(bool(content.example_answer), mode == "guided")
                     self.assertTrue(content.materials)
-                status, value = self.request("GET", "/api/v1/practice/history/u1")
+                status, value = self.request("GET", "/api/v1/practice/history")
                 self.assertEqual(status, 200)
                 item = next(item for item in value["history"] if item["session_id"] == session.session_id)
                 self.assertEqual(bool(item["content"]["example_answer"]), mode == "guided")
@@ -611,23 +625,23 @@ class TrainingTests(unittest.TestCase):
 
     def test_http_full_flow_and_lost_response_recovery(self):
         self.assertEqual(self.request("GET", "/api/v2/graph")[0], 200)
-        status, value = self.request("POST", "/api/v1/practice/start", {"user_id": "u1", "skill_id": "s1", "params": {"mode": "independent"}})
+        status, value = self.request("POST", "/api/v1/practice/start", {"skill_id": "s1", "params": {"mode": "independent"}})
         self.assertEqual(status, 201)
         session_id = value["data"]["session_id"]
         self.assertEqual(value["data"]["content"]["example_answer"], "")
-        status, submitted = self.request("POST", "/api/v1/practice/submit", {"user_id": "u1", "session_id": session_id, "answer": "实际答案"})
+        status, submitted = self.request("POST", "/api/v1/practice/submit", {"session_id": session_id, "answer": "实际答案"})
         self.assertEqual(status, 200)
-        status, recovered = self.request("GET", f"/api/v1/practice/sessions/{session_id}", query=b"user_id=u1")
+        status, recovered = self.request("GET", f"/api/v1/practice/sessions/{session_id}")
         self.assertEqual(status, 200)
         self.assertEqual(recovered["data"]["answer"], "实际答案")
         self.assertEqual(recovered["data"]["evaluation_result"], submitted["data"]["evaluation_result"])
         self.assertTrue(recovered["data"]["content"]["example_answer"])
-        status, records = self.request("GET", "/api/practice/records/u1")
+        status, records = self.request("GET", "/api/practice/records")
         self.assertEqual((status, records["records"][0]["score"]), (200, 80))
-        status, dashboard = self.request("GET", "/api/v2/evidence/u1")
+        status, dashboard = self.request("GET", "/api/v2/evidence")
         self.assertEqual((status, len(dashboard["recent_evidence"])), (200, 2))
-        self.assertEqual(self.request("GET", "/api/v2/recommendations/u1")[0], 200)
-        self.assertEqual(self.request("GET", "/api/user/u1/profile")[1]["skills"]["s1"]["practice_count"], 1)
+        self.assertEqual(self.request("GET", "/api/v2/recommendations")[0], 200)
+        self.assertEqual(self.request("GET", "/api/user/profile")[1]["skills"]["s1"]["practice_count"], 1)
 
     def test_http_retires_global_progress_and_manual_scores_without_writes(self):
         cases = [("GET", "/api/v1/atomic/users/u1/skills"), ("POST", "/api/v1/atomic/users/u1/skills/a1/score"),
@@ -636,7 +650,7 @@ class TrainingTests(unittest.TestCase):
                  ("POST", "/api/practice/record"), ("POST", "/api/user/skill/update")]
         for method, path in cases:
             with self.subTest(path=path):
-                self.assertEqual(self.request(method, path, {"score": 10})[0], 410)
+                self.assertEqual(self.request(method, path, {"score": 10}, authenticated=False)[0], 410)
         self.assertEqual(self.count("users"), 0)
         self.assertEqual(self.count("atom_evidence"), 0)
 
@@ -644,10 +658,10 @@ class TrainingTests(unittest.TestCase):
         client = OpenAIJSONClient(self.settings)
         status, health = self.request("GET", "/api/health", ai=client)
         self.assertEqual((status, health["ai_configured"]), (200, False))
-        status, error = self.request("POST", "/api/v1/practice/start", {"user_id": "u1", "skill_id": "s1"}, ai=client)
+        status, error = self.request("POST", "/api/v1/practice/start", {"skill_id": "s1"}, ai=client)
         self.assertEqual((status, error["code"]), (503, "ai_not_configured"))
-        for body in ({"user_id": "u1", "session_id": "x", "answer": "  "},
-                     {"user_id": "u1", "session_id": "x", "answer": "答案", "assistance_used": "false"}):
+        for body in ({"session_id": "x", "answer": "  "},
+                     {"session_id": "x", "answer": "答案", "assistance_used": "false"}):
             self.assertEqual(self.request("POST", "/api/v1/practice/submit", body)[0], 422)
         self.assertEqual(self.request("GET", "/api/v1/skills/missing")[0], 404)
 

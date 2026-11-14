@@ -178,21 +178,28 @@ export default function Projects() {
           )}
           <div className="space-y-3">
             {projects?.map((p) => (
-              <Link
-                key={p.project_id}
-                to={`/projects/${p.project_id}`}
-                className="panel project-resume"
-              >
-                <div>
-                  <span className="eyebrow">{projectStatus[p.status]}</span>
-                  <h3>{p.goal}</h3>
-                  <p>
-                    {p.atoms.length} 个目标原子 ·{" "}
-                    {p.rounds.filter((r) => r.assessment).length} 次回答
-                  </p>
-                </div>
-                <ArrowRight size={18} />
-              </Link>
+              <div key={p.project_id}>
+                <Link
+                  to={`/projects/${p.project_id}`}
+                  className="panel project-resume"
+                >
+                  <div>
+                    <span className="eyebrow">{projectStatus[p.status]}</span>
+                    <h3>{p.goal}</h3>
+                    <p>
+                      {p.atoms.length} 个目标原子 ·{" "}
+                      {p.rounds.filter((r) => r.assessment).length} 次回答
+                    </p>
+                  </div>
+                  <ArrowRight size={18} />
+                </Link>
+                <Link
+                  className="text-primary text-sm inline-block mt-2 ml-5"
+                  to={`/graph?project=${encodeURIComponent(p.project_id)}`}
+                >
+                  查看目标图谱 →
+                </Link>
+              </div>
             ))}
           </div>
         </section>

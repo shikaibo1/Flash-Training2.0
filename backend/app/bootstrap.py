@@ -11,6 +11,7 @@ from .application.bridge import BridgeService
 from .application.projects import ProjectService
 from .application.project_coach import ProjectCoach
 from .application.auth import AuthService
+from .application.evidence_timeline import EvidenceTimelineService
 from .domain.ports import JSONClient, UnitOfWorkFactory
 
 
@@ -25,10 +26,11 @@ class Services:
     evidence: EvidenceService
     projects: ProjectService
     bridge: BridgeService
+    timeline: EvidenceTimelineService
 
 
 def build_services(work: UnitOfWorkFactory, client: JSONClient) -> Services:
     content = ContentService(client)
     return Services(AuthService(work), SkillService(work, content), PracticeService(work, content),
                     ProgressService(work), RecordService(work), GraphService(work), EvidenceService(work),
-                    ProjectService(work, content, ProjectCoach(client)), BridgeService(work))
+                    ProjectService(work, content, ProjectCoach(client)), BridgeService(work), EvidenceTimelineService(work))

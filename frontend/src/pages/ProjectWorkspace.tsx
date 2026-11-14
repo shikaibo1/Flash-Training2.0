@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   ArrowRight,
   CheckCircle2,
@@ -22,6 +22,8 @@ import {
 export default function ProjectWorkspace() {
   const { account } = useAccount();
   const { id = "" } = useParams();
+  const { hash } = useLocation();
+  const history = useRef<HTMLDetailsElement>(null);
   const [project, setProject] = useState<Project | null>(null);
   const current = useRef<Project | null>(null);
   const [tasks, setTasks] = useState<Skill[]>([]);
@@ -38,7 +40,7 @@ export default function ProjectWorkspace() {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const draftNumber = useRef(0);
   const retry = useRef({ signature: "", id: "" });
-  const accept = (p: Project, restore = false) => {
+  const accept = useCallback((p: Project, restore = false) => {
     current.current = p;
     setProject(p);
     const r = p.rounds.at(-1);
@@ -78,7 +80,7 @@ export default function ProjectWorkspace() {
       );
       setAssisted(recovered?.help || r?.assistance_used || false);
     }
-  };
+  }, [account.user_id]);
   const edit = (text: string, number: string, help: boolean) => {
     setAnswer(text);
     setNumeric(number);
@@ -118,7 +120,22 @@ export default function ProjectWorkspace() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, accept]);
+  useEffect(() => {
+    if (!project || !hash.startsWith("#round-")) return;
+    let targetId: string;
+    try {
+      targetId = decodeURIComponent(hash.slice(1));
+    } catch {
+      return;
+    }
+    if (!project.rounds.some(r => r.assessment && `round-${r.round_id}` === targetId)) return;
+    const target = document.getElementById(targetId);
+    if (!target || !history.current) return;
+    history.current.open = true;
+    const frame = requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, [project, hash]);
   const round = project?.rounds.at(-1);
   const answering =
     project?.status === "answering" || project?.status === "probing";
@@ -245,9 +262,10 @@ export default function ProjectWorkspace() {
         title={project.goal}
         description={project.scope_note}
         action={
-          <Link className="text-primary" to="/projects">
-            全部目标 →
-          </Link>
+          <div className="flex flex-wrap gap-4">
+            <Link className="text-primary" to={`/graph?project=${encodeURIComponent(project.project_id)}`}>目标图谱 →</Link>
+            <Link className="text-primary" to="/projects">全部目标 →</Link>
+          </div>
         }
       />
       <ol className="project-steps" aria-label="学习进度">
@@ -583,7 +601,7 @@ export default function ProjectWorkspace() {
           </p>
         </section>
       )}
-      <details className="panel p-6">
+      <details ref={history} className="panel p-6">
         <summary>
           查看学习过程与原始回答（{project.events.length} 条记录）
         </summary>
@@ -591,7 +609,7 @@ export default function ProjectWorkspace() {
           {project.rounds
             .filter((r) => r.assessment)
             .map((r) => (
-              <article key={r.round_id}>
+              <article key={r.round_id} id={`round-${r.round_id}`} className="scroll-mt-6">
                 <h3>
                   {r.stage === "probe"
                     ? "追问回答"
@@ -601,9 +619,14 @@ export default function ProjectWorkspace() {
                   · {r.assistance_used ? "使用帮助" : "未报告帮助"}
                 </h3>
                 <p>{r.content.description}</p>
+                <details>
+                  <summary>查看原始任务材料</summary>
+                  <pre className="whitespace-pre-wrap overflow-x-auto">{r.content.materials}</pre>
+                </details>
                 <blockquote className="whitespace-pre-wrap">
                   {r.answer}
                 </blockquote>
+                {r.numeric_answer !== null && <p>数值回答：{r.numeric_answer}</p>}
                 <p>{r.assessment?.summary}</p>
               </article>
             ))}
@@ -619,8 +642,8 @@ export default function ProjectWorkspace() {
         </div>
       </details>
       <div className="flex gap-5">
-        <Link to="/graph" className="text-primary">
-          查看能力图谱 →
+        <Link to={`/graph?project=${encodeURIComponent(project.project_id)}`} className="text-primary">
+          查看目标图谱 →
         </Link>
         <Link to="/learning-curve" className="text-primary">
           检查完整证据 →

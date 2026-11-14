@@ -31,7 +31,7 @@ class IntegratedReleaseTests(unittest.TestCase):
         return build_services(SQLiteUnitOfWorkFactory(self.db),legacy.FakeAI())
 
     def assert_both_stores(self):
-        self.assertEqual(self.db.check_health(),4)
+        self.assertEqual(self.db.check_health(),5)
         with self.db.read() as c:
             tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             self.assertTrue({'learning_projects','project_operations','project_observations','bridge_diagnoses'}<=tables)
@@ -40,7 +40,7 @@ class IntegratedReleaseTests(unittest.TestCase):
 
     def test_projects_v3_upgrade_preserves_saved_project_and_revision(self):
         services=self.legacy_v3(PROJECT_SCHEMA)
-        p=services.projects.create(ProjectCreate(request_id='saved',goal='保留我的学习目标',source_text='已有资料'))
+        p=services.projects.create(ProjectCreate(user_id="learner", request_id='saved',goal='保留我的学习目标',source_text='已有资料'))
         with self.db.read() as c: original=c.execute('SELECT payload_json FROM learning_projects').fetchone()[0]
         self.db.initialize(); self.db.initialize()
         self.assert_both_stores()
@@ -75,7 +75,7 @@ class IntegratedReleaseTests(unittest.TestCase):
         services.practice.submit('u',variant.session_id,answer,False)
         self.assertEqual(services.bridge.details('u',variant.session_id)['comparison']['status'],'comparable')
         self.assertEqual(services.practice.session_details('u',variant.session_id).bridge_case_id,'conversion_representation')
-        p=services.projects.create(ProjectCreate(request_id='coexist',goal='另一个学习目标'))
+        p=services.projects.create(ProjectCreate(user_id="learner", request_id='coexist',goal='另一个学习目标'))
         self.assertEqual(p.status,'pending')
         self.assert_both_stores()
 
