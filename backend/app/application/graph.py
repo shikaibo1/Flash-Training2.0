@@ -2,6 +2,7 @@ from ..domain.catalog import GraphEdge, GraphNode, GraphResponse, Role, Knowledg
 from ..domain.models import AtomicSkill, Skill
 from ..domain.ports import UnitOfWorkFactory
 from ..domain.goal_graph import ProjectGraphPlan, GoalAtomState
+from ..domain.planning import private_definitions
 from .evidence import _summarize, _context_state, recommend_tasks
 
 
@@ -26,6 +27,10 @@ class GraphService:
             tasks = unit.skills.list(enabled_only=True)
             evidence = unit.progress.evidence(user_id)
             observations = unit.projects.observations(user_id)
+        personal = project.plan is not None and project.plan_confirmed_at is not None
+        if personal:
+            _, _, private_knowledge = private_definitions(project.project_id, project.plan)
+            knowledge = [*knowledge, *private_knowledge]
         if project.skill is None:
             return ProjectGraphPlan(project_id=project_id, goal=project.goal, context=None, task_id=None,
                 status=project.status, scope_note=project.scope_note, graph=build_graph([], [], [], []),
@@ -64,14 +69,16 @@ class GraphService:
 
         for definition in project.atoms:
             latest = current.get(definition.atomic_skill_id)
-            if latest is None or latest != definition:
+            if not personal and (latest is None or latest != definition):
                 warnings.append(f'「{definition.name}」按项目快照 v{definition.version} 展示；当前目录定义已变化或缺失。')
         for atom_id in targets:
             if atom_id not in snapshots and atom_id in current:
                 warnings.append(f'目标原子 {atom_id} 未保存快照，本次仅展示当前目录定义，不能追认历史版本。')
-        if not any(task == project.skill for task in tasks):
+        if personal:
+            warnings.append('此方案的知识模块、任务和原子仅保存在本人项目中，按确认时的定义展示；AI提出的教学结构仍需人工核对，不自动与同名公共原子合并。')
+        elif not any(task == project.skill for task in tasks):
             warnings.append('项目绑定任务在当前目录已变化、停用或移除；原项目继续使用保存的定义，补练使用当前目录。')
-        warnings.append('目标任务与目标原子沿用项目快照；其余前置、知识和职业引用当前目录。证据状态按原子 ID 与情境汇总，未逐条校验定义版本；请在时间线核对历史版本，不视为长期掌握或同条件提升。')
+        warnings.append(('个人任务、原子与知识模块使用确认时的项目快照。' if personal else '目标任务与目标原子沿用项目快照；其余前置、知识和职业引用当前目录。') + '证据状态按原子 ID 与情境汇总，未逐条校验定义版本；请在时间线核对历史版本，不视为长期掌握或同条件提升。')
         knowledge_ids = {kid for a in included.values() for kid in a.knowledge_ids}
         known_knowledge = {k.knowledge_id for k in knowledge}
         for missing in sorted(knowledge_ids - known_knowledge):

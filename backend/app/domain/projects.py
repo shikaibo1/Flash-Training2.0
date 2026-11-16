@@ -2,6 +2,7 @@
 from typing import Literal
 from pydantic import Field
 from .models import Model, AtomicSkill, Skill, PracticeContent
+from .planning import LearningPlan
 
 Stage = Literal["initial", "probe", "verification"]
 FindingState = Literal["supported", "gap", "uncertain"]
@@ -63,6 +64,9 @@ class LearningProject(Model):
     status: Literal["pending", "ready", "answering", "probing", "support", "review", "completed"]
     scope_note: str
     skill: Skill | None = None
+    plan: LearningPlan | None = None
+    plan_confirmed_at: str | None = None
+    plan_feedback: list[str] = Field(default_factory=list)
     atoms: list[AtomicSkill] = Field(default_factory=list)
     rounds: list[LearningRound] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)

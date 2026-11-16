@@ -9,6 +9,8 @@ from ..domain.ports import UnitOfWorkFactory
 from ..errors import AppError
 from .content import ContentService
 from .project_coach import ProjectCoach
+from .goal_planner import GoalPlanner
+from ..domain.planning import check_sources, private_definitions
 
 
 def stamp():
@@ -28,8 +30,9 @@ def public(project: LearningProject) -> LearningProject:
 
 
 class ProjectService:
-    def __init__(self, work: UnitOfWorkFactory, content: ContentService, coach: ProjectCoach):
+    def __init__(self, work: UnitOfWorkFactory, content: ContentService, coach: ProjectCoach, planner: GoalPlanner | None = None):
         self._work, self._content, self._coach = work, content, coach
+        self._planner = planner
 
     def get(self, project_id: str, user_id: str) -> LearningProject:
         with self._work.read() as unit:
@@ -65,7 +68,7 @@ class ProjectService:
             now = stamp()
             project = LearningProject(project_id=uid(), user_id=command.user_id, goal=command.goal,
                 background=command.background, deliverable=command.deliverable, source_text=command.source_text,
-                status="pending", scope_note="目标已保存为待规划；请选择适用的任务，不会强行匹配不相关原子。",
+                status="pending", scope_note="目标已保存；可请教练拆解为个人方案，检查确认后练习，也可选择已有任务。",
                 probe_limit=command.probe_limit, created_at=now, updated_at=now)
             if command.task_id:
                 project = self._bind(unit, project, command.task_id)
@@ -96,6 +99,8 @@ class ProjectService:
 
     def act(self, project_id: str, command: ProjectAction) -> LearningProject:
         values = command.model_dump(mode="json")
+        if values.get('plan') is None:
+            values.pop('plan', None)  # Preserve fingerprints of operations saved by older versions.
         with self._work.write() as unit:
             project = unit.projects.get(project_id, command.user_id)
             if not unit.projects.claim(project, command.request_id, values):
@@ -104,7 +109,10 @@ class ProjectService:
                 # Claim rollback is automatic on this error.
                 raise AppError("进度已更新，请刷新后继续。", 409, "project_revision_conflict")
         try:
-            if command.action == "bind":
+            if command.action in ('plan', 'save_plan', 'confirm_plan'):
+                result = self._plan(project, command)
+                observations = []
+            elif command.action == "bind":
                 if project.status != "pending" or not command.task_id:
                     raise AppError("只能为待规划项目选择任务。", 409, "invalid_transition")
                 with self._work.write() as unit:
@@ -127,6 +135,39 @@ class ProjectService:
     @staticmethod
     def _event(project, kind, summary, **kwargs):
         return [*project.events, LearningEvent(event_id=uid(), kind=kind, created_at=stamp(), summary=summary, **kwargs)]
+
+    def _plan(self, project, command):
+        if project.status != 'pending' or project.skill or project.rounds or project.plan_confirmed_at:
+            raise AppError('仅可为未开始的待规划项目调整方案；已有学习证据的项目请新建目标。', 409, 'plan_locked')
+        if command.action == 'plan':
+            if len(command.answer) > 3000:
+                raise AppError('补充信息请控制在3000字以内。', 422, 'clarification_too_long')
+            if len([e for e in project.events if e.kind == 'plan']) >= 8:
+                raise AppError('本项目已生成8次方案，请编辑已有方案或新建更具体的目标。', 409, 'planning_limit')
+            if self._planner is None:
+                raise AppError('目标规划服务尚未启用。', 503, 'planner_unavailable')
+            plan = self._planner.propose(project, command.answer)
+            summary = '生成了待检查的个人方案；尚未绑定任务或产生能力证据。'
+        else:
+            plan = command.plan if command.action == 'save_plan' else project.plan
+            if plan is None:
+                raise AppError('请先生成或保存一份方案。', 422, 'plan_required')
+            summary = '已保存手动核对的方案草稿；尚未确认或产生能力证据。'
+        try:
+            check_sources(plan, project.source_text)
+        except ValueError as error:
+            raise AppError(str(error), 422, 'invalid_plan_source') from None
+        updates = {'plan': plan, 'events': self._event(project, command.action, summary)}
+        if command.action == 'plan' and command.answer.strip():
+            updates['plan_feedback'] = [*project.plan_feedback, command.answer]
+        if command.action == 'confirm_plan':
+            if plan.disposition != 'ready':
+                raise AppError('请先补充范围并生成可用方案，再确认开始。', 409, 'plan_needs_clarification')
+            task, atoms, _ = private_definitions(project.project_id, plan)
+            updates.update(skill=task, atoms=atoms, status='ready', plan_confirmed_at=stamp(),
+                scope_note='按已确认的个人方案开始第一阶段；原子仅属于本项目，专业正确性仍需核对，不代表覆盖整个目标。',
+                events=self._event(project, 'confirm_plan', '确认个人方案并固定定义；未改写公共目录，尚无能力判断。'))
+        return project.model_copy(update=updates)
 
     def _new_round(self, project, stage):
         if len(project.rounds) >= 20:

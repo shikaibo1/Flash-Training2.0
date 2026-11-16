@@ -12,6 +12,7 @@ import { useAccount } from "../hooks/useAccount";
 import type { Skill } from "../types";
 import type { Project } from "../types/projects";
 import { findingLabels, projectStatus, SQL_TASK } from "../types/projects";
+import GoalPlanning from '../components/GoalPlanning';
 import {
   Notice,
   LoadingState,
@@ -325,10 +326,20 @@ export default function ProjectWorkspace() {
         </small>
       </div>
       {project.status === "pending" && (
+        <GoalPlanning key={`${project.project_id}:${project.revision}`} project={project} onUpdate={p => { accept(p, true); setError(''); }} />
+      )}
+      {project.plan_confirmed_at && project.plan && (
+        <details className="panel confirmed-plan"><summary>已确认的个人学习方案 · {project.plan.atoms.length} 个原子 · 查看范围与来源</summary>
+          <div className="plan-confirmed-content"><h3>{project.plan.title}</h3><p>{project.plan.scope}</p><p>暂不覆盖：{project.plan.exclusions}</p>
+            <p>方案已固定，后续练习使用这份定义。要改变能力范围请新建项目，避免混淆已有证据。</p>
+            {project.plan.modules.map(module => <div key={module.key}><h3>{module.name}</h3><p>{module.description}</p>{project.plan!.atoms.filter(a => a.module_key === module.key).map(atom => <div key={atom.key}><h3>{atom.name}</h3><p>{atom.action}</p><p>边界：{atom.boundary}</p>{atom.basis === 'user_material' ? <blockquote>资料原文：{atom.source_quote}</blockquote> : <p>教学补充建议，专业准确性待核对。</p>}</div>)}</div>)}
+          </div></details>
+      )}
+      {project.status === "pending" && (
         <section className="panel project-form space-y-4">
-          <h2>先为目标选择适用的练习范围</h2>
+          <h2>也可以直接选择已有任务</h2>
           <p>
-            当前不会自动把任意目标匹配到无关技能。可以保留为待规划，或选择下面的任务开始。
+            使用已有任务会按其现成原子开始，不采用上方尚未确认的草案。
           </p>
           <label>
             练习任务

@@ -4,6 +4,7 @@ import { calculateStats, durationLabel } from "../lib/stats";
 import { usePracticeRecords } from "../hooks/usePracticeRecords";
 import { useAccount } from "../hooks/useAccount";
 import { RecordList } from "../components/workspace/RecordList";
+import AchievementSummary from '../components/AchievementSummary';
 import {
   EmptyState,
   LoadingState,
@@ -41,6 +42,7 @@ export default function Profile() {
               : "今天也可以成为新的起点"}
         </span>
       </section>
+      <AchievementSummary />
       <div className="stats-grid profile-stats">
         <StatCard
           label="累计练习"

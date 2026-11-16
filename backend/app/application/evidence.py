@@ -79,7 +79,17 @@ class EvidenceService:
             atoms = unit.skills.atoms()
             evidence = unit.progress.evidence(user_id)
             observations = unit.projects.observations(user_id)
-        return EvidenceDashboard(atomic_skills=_summarize(atoms, evidence, observations), recent_evidence=evidence[:100],
+            known = {a.atomic_skill_id for a in atoms}
+            project_ids = {}
+            for project in unit.projects.list(user_id):
+                for atom in project.atoms:
+                    if atom.atomic_skill_id not in known:
+                        atoms.append(atom)
+                        known.add(atom.atomic_skill_id)
+                        project_ids[atom.atomic_skill_id] = project.project_id
+        summaries = [s.model_copy(update={'project_id': project_ids.get(s.atomic_skill_id)})
+                     for s in _summarize(atoms, evidence, observations)]
+        return EvidenceDashboard(atomic_skills=summaries, recent_evidence=evidence[:100],
             project_observations=observations[:100])
 
     def recommendations(self, user_id: str) -> LearningRecommendations:

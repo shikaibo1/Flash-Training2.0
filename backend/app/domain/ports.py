@@ -9,6 +9,7 @@ from .catalog import Role, KnowledgeConcept
 from .commands import SkillPatch
 from .projects import LearningProject, ProjectObservation
 from .accounts import Account, AccountCredentials
+from .achievements import AchievementAward
 
 
 class JSONClient(Protocol):
@@ -73,7 +74,15 @@ class Diagnoses(Protocol):
     def add(self, session_id: str, user_id: str, payload: JsonObject, stamp: str) -> None: ...
 
 
+class Achievements(Protocol):
+    def list(self, user_id: str) -> list[AchievementAward]: ...
+    def add(self, user_id: str, award: AchievementAward) -> None: ...
+    def mark_seen(self, user_id: str, ids: list[str], stamp: str) -> None: ...
+
+
 class UnitOfWork(Protocol):
+    @property
+    def achievements(self) -> Achievements: ...
     @property
     def projects(self) -> Projects: ...
     @property

@@ -89,6 +89,7 @@ class ContextEvidence(Model):
 class AtomicEvidenceSummary(Model):
     atomic_skill_id: str
     name: str
+    project_id: str | None = None
     contexts: list[ContextEvidence]
     transfer_observed: bool = False
 

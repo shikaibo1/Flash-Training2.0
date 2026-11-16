@@ -1,4 +1,5 @@
 import type { AtomicSkill, PracticeContent, Skill } from "../types";
+import type { LearningPlan } from './planning';
 
 export type Finding = {
   atomic_skill_id: string;
@@ -38,6 +39,9 @@ export type Project = {
     | "completed";
   scope_note: string;
   skill: Skill | null;
+  plan: LearningPlan | null;
+  plan_confirmed_at: string | null;
+  plan_feedback: string[];
   atoms: AtomicSkill[];
   rounds: ProjectRound[];
   findings: Finding[];

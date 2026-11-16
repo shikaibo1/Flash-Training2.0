@@ -12,6 +12,7 @@ import type {
 } from "../types";
 import type { Project } from "../types/projects";
 import type { EvidenceTimeline, ProjectGraphPlan } from '../types/goalGraph';
+import type { AchievementDashboard } from '../types/achievements';
 
 // Backend address only. GPT credentials are stored exclusively in backend/.env.ai.
 const API_BASE_URL =
@@ -99,12 +100,15 @@ async function request<T>(
     }
     if (!response.ok) {
       if (response.status === 401 && (!isAuth || endpoint === "/auth/logout")) window.dispatchEvent(new Event("auth:expired"));
+      const planIssues = Array.isArray(body?.detail) && /^\/v3\/projects\/[^/]+\/actions$/.test(endpoint)
+        ? body.detail.filter((issue: { loc?: unknown[]; msg?: string }) => Array.isArray(issue.loc) && issue.loc.includes('plan') && typeof issue.msg === 'string')
+          .slice(0, 2).map((issue: { msg: string }) => issue.msg.replace(/^Value error, /, '')).join('；') : '';
       const detail =
         typeof body?.detail === "string"
           ? body.detail
           : body?.msg ||
             (Array.isArray(body?.detail)
-              ? "填写的内容不符合要求，请检查后重试。"
+              ? planIssues || "填写的内容不符合要求，请检查后重试。"
               : undefined);
       throw new ApiError(
         detail || `请求失败（${response.status}）`,
@@ -114,6 +118,10 @@ async function request<T>(
     }
     if (!body)
       throw new ApiError("服务返回了无法读取的数据。", response.status);
+    if (options.method === 'POST' && (
+      endpoint === '/v3/projects' || /^\/v3\/projects\/[^/]+\/actions$/.test(endpoint) ||
+      endpoint === '/v1/practice/submit'
+    )) window.dispatchEvent(new Event('learning:changed'));
     return body;
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -141,6 +149,11 @@ function post<T>(endpoint: string, value: unknown) {
 }
 
 export const systemApi = { health: () => request<Health>("/health") };
+
+export const achievementApi = {
+  sync: () => post<AchievementDashboard>('/v2/achievements/sync', {}),
+  seen: (ids: string[]) => post<AchievementDashboard>('/v2/achievements/seen', { ids }),
+};
 
 export const authApi = {
   me: () => request<Account>("/auth/me"),

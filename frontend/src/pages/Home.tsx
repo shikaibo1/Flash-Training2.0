@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AchievementSummary from '../components/AchievementSummary';
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -78,6 +79,7 @@ export default function Home() {
           </span>
         }
       />
+      <AchievementSummary />
       <Link className="panel bridge-entry" to="/bridge">
         <span>
           <strong>迁移训练 · 从学过到会用</strong>

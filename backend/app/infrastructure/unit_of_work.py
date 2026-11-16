@@ -10,6 +10,7 @@ from .repositories.progress import ProgressRepository
 from .repositories.users import UserRepository
 from .repositories.projects import ProjectRepository
 from .repositories.bridge import DiagnosisRepository
+from .repositories.achievements import AchievementRepository
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class SQLiteUnitOfWork:
     users: UserRepository
     projects: ProjectRepository
     diagnoses: DiagnosisRepository
+    achievements: AchievementRepository
 
 
 class SQLiteUnitOfWorkFactory:
@@ -40,4 +42,4 @@ class SQLiteUnitOfWorkFactory:
     @staticmethod
     def _bind(connection) -> SQLiteUnitOfWork:
         return SQLiteUnitOfWork(SkillRepository(connection), PracticeRepository(connection),
-                                ProgressRepository(connection), UserRepository(connection), ProjectRepository(connection), DiagnosisRepository(connection))
+                                ProgressRepository(connection), UserRepository(connection), ProjectRepository(connection), DiagnosisRepository(connection), AchievementRepository(connection))

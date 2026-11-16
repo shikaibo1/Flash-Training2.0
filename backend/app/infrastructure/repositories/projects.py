@@ -36,12 +36,26 @@ class ProjectRepository:
     def add(self, project: LearningProject, request_id: str, values):
         self._conn.execute("INSERT INTO learning_projects VALUES (?,?,?,?,?,?,?)", (project.project_id, project.user_id, request_id,
             fingerprint(values), project.revision, project.updated_at, dump(project)))
+        self._store_atoms(project)
+
+    def _store_atoms(self, project: LearningProject):
+        # Before migration, legacy upgrade tests construct historical tables directly.
+        if self._conn.execute('PRAGMA user_version').fetchone()[0] < 7:
+            return
+        for atom in project.atoms:
+            previous = self._conn.execute('SELECT definition_json FROM project_atom_snapshots '
+                'WHERE project_id=? AND atomic_skill_id=?', (project.project_id, atom.atomic_skill_id)).fetchone()
+            if previous is not None and json.loads(previous[0]) != atom.model_dump(mode='json'):
+                raise AppError('已固定的项目原子不能被覆盖，请新建项目。', 409, 'definition_locked')
+            self._conn.execute('INSERT INTO project_atom_snapshots VALUES (?,?,?) '
+                'ON CONFLICT(project_id,atomic_skill_id) DO NOTHING', (project.project_id,atom.atomic_skill_id,dump(atom)))
 
     def save(self, project: LearningProject, expected: int):
         count = self._conn.execute("UPDATE learning_projects SET revision=?,updated_at=?,payload_json=? WHERE project_id=? AND revision=?",
             (project.revision, project.updated_at, dump(project), project.project_id, expected)).rowcount
         if not count:
             raise AppError("学习进度已在另一窗口更新，请刷新后继续。", 409, "project_revision_conflict")
+        self._store_atoms(project)
 
     def claim(self, project: LearningProject, request_id: str, values) -> bool:
         digest, now = fingerprint(values), time.time()

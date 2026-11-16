@@ -9,6 +9,7 @@ import {
 import { lazy, Suspense, useEffect, useState } from "react";
 import Header from "./components/Header";
 import AccountGate from "./components/AccountGate";
+import AchievementNotice from "./components/AchievementNotice";
 
 const KnowledgeGraph = lazy(() => import("./pages/KnowledgeGraph"));
 const Home = lazy(() => import("./pages/Home"));
@@ -20,6 +21,7 @@ const LearningCurve = lazy(() => import("./pages/LearningCurve"));
 const Bridge = lazy(() => import("./pages/Bridge"));
 const Projects = lazy(() => import("./pages/Projects"));
 const ProjectWorkspace = lazy(() => import("./pages/ProjectWorkspace"));
+const Achievements = lazy(() => import("./pages/Achievements"));
 
 function RoutePosition() {
   const { pathname } = useLocation();
@@ -66,6 +68,7 @@ const Workspace = () => {
               <Route path="/practice/:id" element={<PracticeSession />} />
               <Route path="/practice" element={<PracticeSession />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/achievements" element={<Achievements />} />
               <Route path="/history" element={<PracticeHistory />} />
               <Route path="/learning-curve" element={<LearningCurve />} />
               <Route
@@ -82,6 +85,7 @@ const Workspace = () => {
             </Routes>
           </Suspense>
         </main>
+        <AchievementNotice />
       </div>
     </BrowserRouter>
   </QueryClientProvider>

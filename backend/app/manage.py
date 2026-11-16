@@ -11,7 +11,7 @@ from .settings import Settings
 def main():
     parser = argparse.ArgumentParser(description="Flash Training SQLite management")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("migrate", help="Initialize schema v5 or back up and upgrade v2/v3/v4; seed catalog once")
+    commands.add_parser("migrate", help="Initialize schema v7 or back up and upgrade v2/v3/v4/v5/v6; seed catalog once")
     commands.add_parser("inspect", help="Show schema version and row counts")
     backup = commands.add_parser("backup", help="Create a consistent SQLite backup (also works while server runs)")
     backup.add_argument("destination", type=Path)

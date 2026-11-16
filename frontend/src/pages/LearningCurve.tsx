@@ -195,7 +195,7 @@ export default function LearningCurve() {
                 <article className="evidence-card" key={atom.atomic_skill_id}>
                   <div className="evidence-card-heading">
                     <Link
-                      to={`/graph?node=${encodeURIComponent(`atom:${atom.atomic_skill_id}`)}`}
+                      to={`/graph?node=${encodeURIComponent(`atom:${atom.atomic_skill_id}`)}${atom.project_id ? `&project=${encodeURIComponent(atom.project_id)}` : ''}`}
                     >
                       {atom.name}
                     </Link>

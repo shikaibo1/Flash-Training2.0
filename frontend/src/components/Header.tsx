@@ -15,6 +15,7 @@ import {
   Shapes,
   Sprout,
   LogOut,
+  Award,
 } from "lucide-react";
 
 const navigation = [
@@ -25,6 +26,7 @@ const navigation = [
   { to: "/graph", label: "能力图谱", short: "图谱", icon: GitBranch },
   { to: "/learning-curve", label: "能力证据", short: "证据", icon: Shapes },
   { to: "/history", label: "练习记录", short: "记录", icon: ClipboardList },
+  { to: "/achievements", label: "成长成就", short: "成就", icon: Award },
   { to: "/profile", label: "个人中心", short: "我的", icon: CircleUserRound },
 ];
 
@@ -133,6 +135,7 @@ export default function Header() {
           <strong>FlashTrain.</strong>
         </Link>
         <div className="header-actions">
+          <Link className="achievement-header-link" to="/achievements" aria-label="打开成长成就" title="成长成就"><Award size={21} /></Link>
           <span className="header-date">{date}</span>
           <form className="header-search" onSubmit={submitSearch}>
             <Search size={16} />

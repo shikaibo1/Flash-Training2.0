@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from .project_migration import PROJECT_SCHEMA
 from .account_migration import ACCOUNT_SCHEMA
+from .achievement_migration import ACHIEVEMENT_SCHEMA
+from .planning_migration import migrate_planning
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 BRIDGE_SCHEMA = """
 CREATE TABLE bridge_diagnoses (
     session_id TEXT PRIMARY KEY REFERENCES practice_sessions(session_id),
@@ -103,10 +105,10 @@ class Database:
         conn = self.connect()
         try:
             # Snapshot before applying the first schema change; backup is outside the write lock.
-            if conn.execute("PRAGMA user_version").fetchone()[0] in (2, 3, 4):
+            if conn.execute("PRAGMA user_version").fetchone()[0] in (2, 3, 4, 5, 6):
                 backup_dir = self.path.parent / "backups"
                 backup_dir.mkdir(exist_ok=True)
-                backup_path = backup_dir / ("before-v5-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8] + ".sqlite3")
+                backup_path = backup_dir / ("before-v7-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8] + ".sqlite3")
                 with closing(sqlite3.connect(backup_path)) as destination:
                     conn.backup(destination)
             conn.execute("PRAGMA journal_mode=WAL")
@@ -114,8 +116,8 @@ class Database:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise RuntimeError("Database schema is newer than this application")
-            if version not in (0, 2, 3, 4, SCHEMA_VERSION):
-                raise RuntimeError("This application supports schema v2 through v5; schema v1 requires a new database path. Existing data was not modified.")
+            if version not in (0, 2, 3, 4, 5, 6, SCHEMA_VERSION):
+                raise RuntimeError("This application supports schema v2 through v7; schema v1 requires a new database path. Existing data was not modified.")
             if version == 0:
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").fetchone():
                     raise RuntimeError("The selected database is not an empty schema v2 database; select a new database path.")
@@ -139,6 +141,12 @@ class Database:
                 for statement in ACCOUNT_SCHEMA.split(";"):
                     if statement.strip():
                         conn.execute(statement)
+            if version in (0, 2, 3, 4, 5):
+                for statement in ACHIEVEMENT_SCHEMA.split(';'):
+                    if statement.strip():
+                        conn.execute(statement)
+            if version in (0, 2, 3, 4, 5, 6):
+                migrate_planning(conn)
                 conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
         except BaseException:

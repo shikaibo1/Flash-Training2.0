@@ -113,7 +113,7 @@ export default function Projects() {
                 value={form.task_id}
                 onChange={(e) => setForm({ ...form, task_id: e.target.value })}
               >
-                <option value="">先保存目标，稍后规划</option>
+                <option value="">保存后由教练拆解个人方案</option>
                 <option value={SQL_TASK}>
                   推荐体验：数据库 → 订单数据分析
                 </option>
@@ -125,7 +125,7 @@ export default function Projects() {
               </select>
             </label>
             <p className="text-sm text-muted-foreground">
-              本版先验证已有任务中的学习闭环。任意目标均可保存；尚不自动拆解全部学科。
+              不选已有任务时，保存后可生成并修改个人原子方案；先聚焦第一阶段，确认后开始诊断。
             </p>
             <details>
               <summary>补充资料与诊断节奏</summary>
@@ -135,7 +135,7 @@ export default function Projects() {
                   <textarea
                     maxLength={30000}
                     rows={5}
-                    placeholder="作为学习背景保存；内置体验仍使用可核验的模拟数据。"
+                    placeholder="粘贴课程要求、教材节选或工作任务。规划会核对其中的引用；暂无文件、图片或录音解析。"
                     value={form.source_text}
                     onChange={(e) =>
                       setForm({ ...form, source_text: e.target.value })

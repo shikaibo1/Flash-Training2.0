@@ -31,7 +31,7 @@ class IntegratedReleaseTests(unittest.TestCase):
         return build_services(SQLiteUnitOfWorkFactory(self.db),legacy.FakeAI())
 
     def assert_both_stores(self):
-        self.assertEqual(self.db.check_health(),5)
+        self.assertEqual(self.db.check_health(),7)
         with self.db.read() as c:
             tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             self.assertTrue({'learning_projects','project_operations','project_observations','bridge_diagnoses'}<=tables)

@@ -2,6 +2,8 @@
 
 本版把学习目标、短诊断、针对性帮助和新任务独立复测连成可持续保存的流程。首页的“创建或继续学习目标”进入 `/projects`。原来的单次任务练习和历史记录继续可用。
 
+现已支持[个人目标拆解](goal-planning.md)：不选择已有任务时，可生成知识模块与原子草稿，修改检查后确认，再复用下述学习闭环；公共目录不混入个人定义。
+
 ## 如何体验
 
 1. 新建目标，如“把数据库知识用于订单数据分析”，填写已有基础、期望交付物；可粘贴文字资料。
@@ -35,7 +37,7 @@
 - `domain/evidence_views.py` 与 `application/evidence.py`：把新观察与已有单次练习证据汇总，不覆盖旧历史。
 - 前端 `Projects.tsx`、`ProjectWorkspace.tsx`：目标入口和工作台；服务端自动保存草稿，浏览器保存即时刷新的恢复副本。并发版本冲突会拒绝覆盖。
 
-数据库由schema v2、两种历史v3或v4增量升级为v5，**目录版本仍为v2，文件名保持原样**。保留或补齐 `learning_projects`、`project_operations`、`project_observations` 与 `bridge_diagnoses`，新增账号和登录会话表，保留学习记录和项目快照；目录启动逻辑会为未自定义的原始原子补充已编写的条件字段；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
+数据库由schema v2、两种历史v3、v4、v5或v6增量升级为v7，**目录版本仍为v2，文件名保持原样**。保留或补齐 `learning_projects`、`project_operations`、`project_observations` 与 `bridge_diagnoses`，新增或保留账号、登录会话、成就和 `project_atom_snapshots`，项目观察外键引用项目定义，保留学习记录和项目快照；目录启动逻辑会为未自定义的原始原子补充已编写的条件字段；首次升级前自动在数据库旁 `backups/` 生成一致性备份。可以用 `python -m app.manage inspect` 检查版本与完整性。
 
 AI配置沿用 `backend/.env.ai`，前端没有密钥。修改诊断提示词在 `application/project_coach.py`，底层API适配仍在 `infrastructure/ai.py`。
 

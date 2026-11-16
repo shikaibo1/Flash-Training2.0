@@ -2,7 +2,15 @@
 
 FastAPI 路由调用应用服务；领域层定义模型、规则和仓库协议；SQLite 仓库与模型客户端提供实际能力。事务管理统一创建和关闭连接，仓库不自行提交；模型网络调用位于写事务之外。
 
-## 数据（目录 v2 / 数据库 schema v5）
+## 成就接口与数据版本
+
+当前数据库为 schema v7，兼容 v2、两种历史 v3、v4、v5 和 v6 的备份后增量升级。成就使用 `achievement_awards` 表，个人原子定义使用 `project_atom_snapshots`，项目观察关联项目定义；保留账号及全部学习记录，原数据库文件名不变。
+
+`GET /api/v2/achievements` 只读本人进度；`POST /api/v2/achievements/sync` 按服务端历史核对并幂等颁发；`POST /api/v2/achievements/seen` 标记本人指定成就已读。均需登录；不调用模型，不接受客户端自报分数或已解锁状态。具体规则、来源和通知边界见 [成就说明](../docs/achievements.md)。
+
+目标规划沿用 `/api/v3/projects/{project_id}/actions`：`plan` 生成草稿或简短澄清，`save_plan` 检查并保存人工修改，`confirm_plan` 固定已保存的私人定义。模型调用在事务外；身份由 Cookie 获取，未确认不写公共目录、不产出能力证据。完整约定见 [目标拆解说明](../docs/goal-planning.md)。
+
+## 数据（目录 v2 / 账号版本 schema v5 的历史说明）
 
 默认库为 data/flash_training_v2.sqlite3。首次初始化从 data/career_catalog.json 播种岗位、知识、行动原子、任务及关联，不导入旧 JSON 或学习历史。旧数据不再需要，但显式配置的数据库不会被自动清空或删除；schema v2、两种历史v3及v4数据库在一致性备份后增量升级到v5；schema v1仍需选择新文件。
 
@@ -82,4 +90,4 @@ python -m uvicorn api_server:app --host 127.0.0.1 --port 8001
 
 测试使用临时 SQLite、FakeAI 和模拟 OpenAI SDK，不调用付费模型或写用户数据库。覆盖题目快照、引用与分值校验、提示隐藏、事务回滚、并发幂等、情境隔离、迁移规则、前置推荐和接口流程；浏览器另行通过真实本地 HTTP 验证练习闭环。真实模型质量与外部网关尚未验证。当前账号改动未执行测试；上述历史验证不覆盖登录和数据隔离。
 
-学习项目接口与简短诊断说明见 [学习项目说明](../docs/learning-projects.md)。schema v5同时包含账号、迁移训练与学习项目存储。
+学习项目接口与简短诊断说明见 [学习项目说明](../docs/learning-projects.md)，个人目标拆解见 [目标规划说明](../docs/goal-planning.md)。当前 schema v7 包含账号、迁移训练、学习项目、成长成就及项目原子快照存储。

@@ -136,6 +136,7 @@ export type EvidenceStatus =
 export type AtomEvidence = {
   atomic_skill_id: string;
   name: string;
+  project_id?: string | null;
   contexts: {
     context: string;
     status: EvidenceStatus;
